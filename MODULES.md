@@ -67,13 +67,3 @@ drawer → **Sync & tracking** (this phone, all phones, synced data, movement).
 Signed APKs with any module selection are built on the server by
 `tools/server-build/builder_agent.py` when the super-admin asks (admin → App builds) —
 see `tools/server-build/README.md`. Local builds stay unsigned with versionCode 1.
-
-## Building on this Mac
-
-`gradle.properties` sets `-Djavax.net.ssl.trustStoreType=KeychainStore`, which
-makes Gradle fail with `PKIX path building failed` when downloading
-dependencies. Override the JVM args for the build if you hit it:
-
-```bash
-./gradlew :ajiriwa:assembleDebug "-Dorg.gradle.jvmargs=-Xmx3072m -Dfile.encoding=UTF-8"
-```
