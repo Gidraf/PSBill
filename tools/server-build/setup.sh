@@ -22,12 +22,19 @@ die() { echo -e "\033[1;31mxx\033[0m $*" >&2; exit 1; }
 for c in docker git python3 curl; do command -v $c >/dev/null || die "$c is not installed"; done
 
 # ── find the CVPAP docker compose project ──
-if [ -z "${CVPAP_DIR:-}" ]; then
-  for d in /opt/CVPAP /opt/cvpap /srv/CVPAP /srv/cvpap /root/CVPAP /home/*/CVPAP /home/*/Projects/CVPAP; do
+# (under sudo, "~" means root's home: use the invoking user's home instead)
+USER_HOME=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6); USER_HOME=${USER_HOME:-$HOME}
+if [ -n "${CVPAP_DIR:-}" ]; then
+  case "$CVPAP_DIR" in "~"*) CVPAP_DIR="$USER_HOME${CVPAP_DIR#\~}";; esac
+  [ -d "$CVPAP_DIR" ] || die "CVPAP_DIR=$CVPAP_DIR does not exist — use the full path, e.g. CVPAP_DIR=$USER_HOME/ajiriwa/CVPAP"
+  [ -f "$CVPAP_DIR/docker-compose.yml" ] || die "no docker-compose.yml in $CVPAP_DIR"
+else
+  for d in "$USER_HOME"/ajiriwa/CVPAP "$USER_HOME"/CVPAP "$USER_HOME"/*/CVPAP /opt/CVPAP /opt/cvpap /srv/CVPAP /srv/cvpap \
+           /root/CVPAP /root/ajiriwa/CVPAP /home/*/CVPAP /home/*/ajiriwa/CVPAP /home/*/Projects/CVPAP; do
     if [ -f "$d/docker-compose.yml" ] && grep -q "kiosk-ws" "$d/docker-compose.yml"; then CVPAP_DIR=$d; break; fi
   done
 fi
-[ -n "${CVPAP_DIR:-}" ] || die "CVPAP not found — run again with CVPAP_DIR=/path/to/CVPAP"
+[ -n "${CVPAP_DIR:-}" ] || die "CVPAP not found — run again with CVPAP_DIR=/full/path/to/CVPAP"
 say "CVPAP: $CVPAP_DIR"
 
 # ── build clone ──
@@ -41,8 +48,12 @@ fi
 
 # ── secrets live in CVPAP (encrypted); fetch only the builder token ──
 say "creating / reading the signing key and builder token inside CVPAP"
-TOKEN=$(cd "$CVPAP_DIR" && docker compose exec -T web python manage.py app_builder_setup --print-token 2>/dev/null | grep -E '^bld_' | tail -1 || true)
-[ -n "$TOKEN" ] || die "could not get the builder token — deploy the latest CVPAP first: (cd $CVPAP_DIR && docker compose up -d --build web)"
+OUT=$(cd "$CVPAP_DIR" && docker compose exec -T web python manage.py app_builder_setup --print-token 2>&1 || true)
+TOKEN=$(printf '%s\n' "$OUT" | grep -E '^bld_' | tail -1 || true)
+if [ -z "$TOKEN" ]; then
+  printf '%s\n' "$OUT" | tail -15 >&2
+  die "could not get the builder token (output above). Is the latest CVPAP running? (cd $CVPAP_DIR && git pull && docker compose up -d --build web)"
+fi
 
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Builder-Token: $TOKEN" -H 'Content-Type: application/json' \
   -d '{"name":"setup-check"}' "$CVPAP_URL/api/v1/app-builds/worker/heartbeat")
