@@ -15,8 +15,8 @@
 local.properties
 stitch_psbill_enterprise_hub/
 
-# server APK builds: secrets and state never go to git
-tools/server-build/release.env
+# signing keys never go to git (the builder keeps them in CVPAP, encrypted)
 tools/server-build/state/
 *.jks
 *.keystore
+*.p12

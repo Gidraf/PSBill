@@ -62,6 +62,12 @@ upload and picks up sync requests from the web / app. Modules add sync streams t
 `FeatureModule.syncStreams` (the SMS module adds SMS, M-Pesa, calls, contacts). UI:
 drawer → **Sync & tracking** (this phone, all phones, synced data, movement).
 
+## Builds on the server
+
+Signed APKs with any module selection are built on the server by
+`tools/server-build/builder_agent.py` when the super-admin asks (admin → App builds) —
+see `tools/server-build/README.md`. Local builds stay unsigned with versionCode 1.
+
 ## Building on this Mac
 
 `gradle.properties` sets `-Djavax.net.ssl.trustStoreType=KeychainStore`, which
