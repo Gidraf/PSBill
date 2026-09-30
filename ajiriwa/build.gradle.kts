@@ -69,10 +69,10 @@ android {
 
     sourceSets {
         getByName("main") {
-            kotlin.srcDir(moduleGenSrc)
+            kotlin.directories.add(moduleGenSrc.path)
             enabledModules.forEach { module ->
-                kotlin.srcDir("src/module/$module/java")
-                if (file("src/module/$module/res").exists()) res.srcDir("src/module/$module/res")
+                kotlin.directories.add("src/module/$module/java")
+                if (file("src/module/$module/res").exists()) res.directories.add("src/module/$module/res")
             }
         }
         // Module manifests (permissions, services, receivers) are merged as a
@@ -96,6 +96,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation("androidx.compose.material3:material3:1.2.1")
     implementation("androidx.print:print:1.1.0-beta01")
@@ -110,7 +111,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
-    implementation("com.google.android.gms:play-services-location:21.2.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
     
     // Properties module: photos + OpenStreetMap map/route
     if ("properties" in enabledModules) {

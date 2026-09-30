@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -95,7 +95,7 @@ fun AppScaffold(
                 NavigationDrawerItem(
                     label = { Text("Sign out", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
                     selected = false,
-                    icon = { Icon(Icons.Filled.ExitToApp, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, modifier = Modifier.size(20.dp)) },
                     onClick = { scope.launch { drawerState.close() }; onLogout() },
                     shape = CircleShape,
                     colors = NavigationDrawerItemDefaults.colors(

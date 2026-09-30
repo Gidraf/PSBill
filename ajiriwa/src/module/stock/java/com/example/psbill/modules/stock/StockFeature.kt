@@ -12,7 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,7 +47,7 @@ import java.util.UUID
  */
 object StockFeature : FeatureModule() {
     override val slug = "stock"
-    override val nav = NavModule("stock", "Stock & Tanks", Icons.Filled.List, listOf("inventory"), order = 15)
+    override val nav = NavModule("stock", "Stock & Tanks", Icons.AutoMirrored.Filled.List, listOf("inventory"), order = 15)
 
     private val http by lazy { OkHttpClient() }
 

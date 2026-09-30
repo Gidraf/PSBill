@@ -8,8 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -106,8 +106,8 @@ fun CatalogueScreen(server: String, headers: () -> Headers, modifier: Modifier =
 
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AjiriwaColors.PrimaryAccent) }
-            error != null -> EmptyState(Icons.Filled.List, "Couldn't load products", error!!)
-            filteredProducts.isEmpty() -> EmptyState(Icons.Filled.List, "No products found", "No items match '$searchQuery'")
+            error != null -> EmptyState(Icons.AutoMirrored.Filled.List, "Couldn't load products", error!!)
+            filteredProducts.isEmpty() -> EmptyState(Icons.AutoMirrored.Filled.List, "No products found", "No items match '$searchQuery'")
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(filteredProducts) { p -> ProductBentoCard(p) }
             }

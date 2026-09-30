@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -75,7 +77,7 @@ fun PropertyDetailScreen(
         topBar = {
             TopAppBar(
                 title = { Text(listing?.optString("title") ?: "House", maxLines = 1, color = AjiriwaColors.TextPrimary) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, null, tint = AjiriwaColors.Primary) } },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = AjiriwaColors.Primary) } },
                 actions = {
                     if (listing != null) IconButton(onClick = { onEdit(listing) }) { Icon(Icons.Filled.Edit, "Edit", tint = AjiriwaColors.Primary) }
                 },
@@ -181,7 +183,7 @@ private fun Overview(l: JSONObject, approved: Boolean, onShare: () -> Unit, onPr
 
         // Actions
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(onClick = onShare, enabled = approved, label = { Text("Share SMS/email") }, leadingIcon = { Icon(Icons.Filled.Send, null, Modifier.size(16.dp)) })
+            AssistChip(onClick = onShare, enabled = approved, label = { Text("Share SMS/email") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, null, Modifier.size(16.dp)) })
             AssistChip(onClick = onPreview, label = { Text("Screen preview") }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null, Modifier.size(16.dp)) })
             l.str("contact_phone")?.let { phone ->
                 AssistChip(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))) }, label = { Text("Call") }, leadingIcon = { Icon(Icons.Filled.Phone, null, Modifier.size(16.dp)) })

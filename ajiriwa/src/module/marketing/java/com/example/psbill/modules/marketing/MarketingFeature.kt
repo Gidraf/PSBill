@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +39,7 @@ import org.json.JSONObject
  */
 object MarketingFeature : FeatureModule() {
     override val slug = "marketing"
-    override val nav = NavModule("marketing", "Marketing", Icons.Filled.Send, listOf("marketing"), order = 35)
+    override val nav = NavModule("marketing", "Marketing", Icons.AutoMirrored.Filled.Send, listOf("marketing"), order = 35)
 
     private val http by lazy { OkHttpClient() }
 

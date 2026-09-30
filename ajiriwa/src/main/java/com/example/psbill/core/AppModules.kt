@@ -1,17 +1,17 @@
 package com.example.psbill.core
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -73,14 +73,14 @@ object AppModules {
         title.contains("Screen", true) || title.contains("Arcade", true) || title.contains("Playgate", true) -> Icons.Filled.Star
         title.contains("Activity", true) -> Icons.Filled.Info
         title.contains("SMS", true) -> Icons.Filled.Email
-        title.contains("Catalogue", true) || title.contains("Inventory", true) -> Icons.Filled.List
+        title.contains("Catalogue", true) || title.contains("Inventory", true) -> Icons.AutoMirrored.Filled.List
         title.contains("Order", true) -> Icons.Filled.ShoppingCart
         title.contains("Customer", true) || title.contains("User", true) -> Icons.Filled.Person
         title.contains("WiFi", true) -> Icons.Filled.Refresh
         title.contains("Print", true) -> Icons.Filled.Build
         title.contains("Dashboard", true) -> Icons.Filled.Home
         title.contains("Voucher", true) -> Icons.Filled.DateRange
-        title.contains("Marketing", true) -> Icons.Filled.Send
+        title.contains("Marketing", true) -> Icons.AutoMirrored.Filled.Send
         title.contains("WhatsApp", true) -> Icons.Filled.Phone
         title.contains("Integration", true) -> Icons.Filled.Build
         else -> Icons.Filled.Home

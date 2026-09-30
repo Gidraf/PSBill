@@ -65,8 +65,8 @@ android {
     }
     sourceSets {
         getByName("main") {
-            kotlin.srcDir(moduleGenSrc)
-            enabledModules.forEach { module -> kotlin.srcDir("src/module/$module/java") }
+            kotlin.directories.add(moduleGenSrc.path)
+            enabledModules.forEach { module -> kotlin.directories.add("src/module/$module/java") }
         }
     }
     packaging {

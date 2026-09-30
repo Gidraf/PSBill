@@ -47,7 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -1486,7 +1486,7 @@ class MainActivity : ComponentActivity() {
                 val recent = device.optJSONArray("recent_sessions")
                 if (recent != null && recent.length() > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Divider(color = Color.White.copy(alpha = 0.1f))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "Recent Sessions:",
@@ -3115,7 +3115,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     
-                    Divider(color = Color.White.copy(alpha = 0.1f))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
                     
                     if (sessionsList.isEmpty()) {
                         Box(
