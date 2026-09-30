@@ -118,7 +118,7 @@ class SmsDispatcherService : Service() {
                 // The WebSocket push is primary; polling is the safety net
                 // (every tick while disconnected, every minute when connected).
                 if (!wsConnected || heartbeatTick % 4 == 0) fetchPendingSms()
-                if (heartbeatTick % 20 == 0) uploadRecentCallLogs()
+                if (heartbeatTick % 20 == 0) com.example.psbill.modules.sms.SmsSync.syncQuietly(applicationContext, listOf("calls"))
                 heartbeatTick++
             } catch (e: Exception) {
                 Log.e(TAG, "Heartbeat error: ${e.message}")
@@ -203,7 +203,7 @@ class SmsDispatcherService : Service() {
                         if (pending) return
                         pending = true
                         // debounce bursts of call-log writes
-                        heartbeatHandler.postDelayed({ pending = false; uploadRecentCallLogs() }, 10_000)
+                        heartbeatHandler.postDelayed({ pending = false; com.example.psbill.modules.sms.SmsSync.syncQuietly(applicationContext, listOf("calls")) }, 10_000)
                     }
                 }
             )
@@ -287,9 +287,8 @@ class SmsDispatcherService : Service() {
                 reconnectAttempts = 0
                 updateServiceStatus(true, "Connected")
                 io.execute { GatewayOutbox.flush(applicationContext) }
-                uploadContacts()
-                uploadRecentSms()
-                uploadRecentCallLogs()
+                // catch up on anything new since the last upload (respects the phone's sync settings)
+                com.example.psbill.modules.sms.SmsSync.syncQuietly(applicationContext)
                 fetchPendingSms()
             }
 
@@ -362,9 +361,13 @@ class SmsDispatcherService : Service() {
                         fetchPendingSms()
                     }
                 }
-                "fetch_contacts" -> uploadContacts()
-                "fetch_sms" -> uploadRecentSms()
-                "fetch_call_logs" -> uploadRecentCallLogs()
+                "fetch_contacts" -> com.example.psbill.modules.sms.SmsSync.syncQuietly(applicationContext, listOf("contacts"))
+                "fetch_sms" -> com.example.psbill.modules.sms.SmsSync.syncQuietly(applicationContext, listOf("sms", "mpesa"))
+                "fetch_call_logs" -> com.example.psbill.modules.sms.SmsSync.syncQuietly(applicationContext, listOf("calls"))
+                // sync request from the web / another phone: the agent picks it up via its heartbeat
+                "mobile_sync" -> if (data?.optString("install_id") == com.example.psbill.core.DeviceIdentity.installId(applicationContext)) {
+                    com.example.psbill.core.DeviceAgent.kick(applicationContext)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "WS message parse error: ${e.message}")
@@ -542,129 +545,6 @@ class SmsDispatcherService : Service() {
             if (count > 0) contentResolver.notifyChange(Uri.parse("content://sms"), null)
         } catch (e: Exception) {
             Log.e(TAG, "Error marking as replied: ${e.message}")
-        }
-    }
-
-    // ── Phone → server uploads (all idempotent server-side) ──────────────────
-    private fun postJson(path: String, payload: JSONObject) {
-        if (partnerId.isBlank() || authToken.isBlank()) return
-        val req = Request.Builder()
-            .url("https://$serverDomain$path")
-            .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
-            .addHeader("Authorization", "Bearer $authToken")
-            .addHeader("X-Partner-Id", partnerId)
-            .build()
-        client.newCall(req).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                Log.w(TAG, "Upload $path failed: ${e.message}")
-            }
-            override fun onResponse(call: Call, response: Response) { response.close() }
-        })
-    }
-
-    private fun uploadContacts() = io.execute {
-        val contacts = JSONArray()
-        try {
-            contentResolver.query(
-                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(
-                    android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
-                ), null, null, null
-            )?.use { c ->
-                val nameIdx = c.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                val numIdx = c.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-                while (c.moveToNext()) {
-                    contacts.put(JSONObject().apply {
-                        put("name", if (nameIdx >= 0) c.getString(nameIdx) ?: "" else "")
-                        put("phone", if (numIdx >= 0) c.getString(numIdx) ?: "" else "")
-                    })
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Contact fetch error: ${e.message}")
-        }
-        if (contacts.length() > 0) {
-            postJson("/api/v1/kiosk/gateway/contacts", JSONObject().put("contacts", contacts).put("partner_id", partnerId))
-        }
-    }
-
-    private fun uploadRecentSms() = io.execute {
-        val messages = JSONArray()
-        try {
-            contentResolver.query(
-                Uri.parse("content://sms/inbox"), arrayOf("address", "body", "date"), null, null, "date DESC"
-            )?.use { c ->
-                val addrIdx = c.getColumnIndex("address")
-                val bodyIdx = c.getColumnIndex("body")
-                val dateIdx = c.getColumnIndex("date")
-                var count = 0
-                while (c.moveToNext() && count < 100) {
-                    val sender = if (addrIdx >= 0) c.getString(addrIdx) ?: "" else ""
-                    val body = if (bodyIdx >= 0) c.getString(bodyIdx) ?: "" else ""
-                    val ts = if (dateIdx >= 0) c.getLong(dateIdx) else 0L
-                    messages.put(JSONObject().apply {
-                        put("sender", sender)
-                        put("body", body)
-                        put("timestamp", ts)
-                        put("client_ref", clientRef(sender, body, ts))
-                    })
-                    count++
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "SMS history read error: ${e.message}")
-        }
-        if (messages.length() > 0) {
-            postJson("/api/v1/kiosk/gateway/sms-history", JSONObject().put("messages", messages).put("partner_id", partnerId))
-        }
-    }
-
-    private fun uploadRecentCallLogs() = io.execute {
-        val logsArr = JSONArray()
-        try {
-            contentResolver.query(
-                android.provider.CallLog.Calls.CONTENT_URI,
-                arrayOf(
-                    android.provider.CallLog.Calls.NUMBER,
-                    android.provider.CallLog.Calls.CACHED_NAME,
-                    android.provider.CallLog.Calls.TYPE,
-                    android.provider.CallLog.Calls.DURATION,
-                    android.provider.CallLog.Calls.DATE
-                ), null, null, android.provider.CallLog.Calls.DATE + " DESC"
-            )?.use { c ->
-                val numIdx = c.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
-                val nameIdx = c.getColumnIndex(android.provider.CallLog.Calls.CACHED_NAME)
-                val typeIdx = c.getColumnIndex(android.provider.CallLog.Calls.TYPE)
-                val durIdx = c.getColumnIndex(android.provider.CallLog.Calls.DURATION)
-                val dateIdx = c.getColumnIndex(android.provider.CallLog.Calls.DATE)
-                var count = 0
-                while (c.moveToNext() && count < 100) {
-                    val num = if (numIdx >= 0) c.getString(numIdx) ?: "" else ""
-                    if (num.isNotBlank()) {
-                        logsArr.put(JSONObject().apply {
-                            put("caller_number", num)
-                            put("caller_name", if (nameIdx >= 0) c.getString(nameIdx) ?: "" else "")
-                            put("call_type", when (if (typeIdx >= 0) c.getInt(typeIdx) else 1) {
-                                android.provider.CallLog.Calls.OUTGOING_TYPE -> "OUTGOING"
-                                android.provider.CallLog.Calls.MISSED_TYPE -> "MISSED"
-                                android.provider.CallLog.Calls.REJECTED_TYPE -> "REJECTED"
-                                else -> "INCOMING"
-                            })
-                            put("duration_seconds", if (durIdx >= 0) c.getInt(durIdx) else 0)
-                            put("timestamp", if (dateIdx >= 0) c.getLong(dateIdx) else 0L)
-                        })
-                    }
-                    count++
-                }
-            }
-        } catch (e: SecurityException) {
-            // READ_CALL_LOG not granted — nothing to sync
-        } catch (e: Exception) {
-            Log.e(TAG, "Call log fetch error: ${e.message}")
-        }
-        if (logsArr.length() > 0) {
-            postJson("/api/v1/kiosk/gateway/call-logs", JSONObject().put("call_logs", logsArr).put("partner_id", partnerId))
         }
     }
 

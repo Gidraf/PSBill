@@ -14,3 +14,9 @@
 .cxx
 local.properties
 stitch_psbill_enterprise_hub/
+
+# server APK builds: secrets and state never go to git
+tools/server-build/release.env
+tools/server-build/state/
+*.jks
+*.keystore

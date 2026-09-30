@@ -45,6 +45,7 @@ import java.io.IOException
 object SmsFeature : FeatureModule() {
     override val slug = "sms"
     override val nav = NavModule("sms", "SMS Engine", Icons.Filled.Email, order = 30)
+    override val syncStreams get() = SmsSync.streams
 
     private val http by lazy { OkHttpClient() }
 

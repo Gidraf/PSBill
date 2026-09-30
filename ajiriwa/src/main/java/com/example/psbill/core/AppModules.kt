@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
@@ -42,10 +43,13 @@ object AppModules {
         "arcade" to NavModule("kiosk", "Playgate Control", Icons.Filled.Star, listOf("kiosk", "gaming_kiosk"), isArcade = true, order = 60),
     )
 
+    /** Always compiled: phone sync control + movement (core, not a module). */
+    val deviceSyncNav = NavModule("device_sync", "Sync & tracking", Icons.Filled.LocationOn, order = 95)
+
     /** Every nav item compiled into this build, in drawer order. */
     val partnerNav: List<NavModule>
         get() = (CompiledModules.features.map { it.nav } +
-            builtInNav.filter { CompiledModules.has(it.first) }.map { it.second })
+            builtInNav.filter { CompiledModules.has(it.first) }.map { it.second } + deviceSyncNav)
             .sortedBy { it.order }
 
     /** Super-admin drawer: everything compiled, no partner gating. */

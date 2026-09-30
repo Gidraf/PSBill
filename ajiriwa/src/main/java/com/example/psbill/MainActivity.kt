@@ -932,6 +932,7 @@ class MainActivity : ComponentActivity() {
             }
             val doLogout: () -> Unit = {
                 com.example.psbill.core.CompiledModules.features.forEach { runCatching { it.onLogout(context) } }
+                com.example.psbill.core.DeviceAgent.onLogout(context)
                 authToken = ""
                 partnerId = ""
                 userJson = ""
@@ -944,6 +945,8 @@ class MainActivity : ComponentActivity() {
             com.example.psbill.core.CompiledModules.features.forEach { feature ->
                 androidx.compose.runtime.key(feature.nav.key) { feature.SessionEffects(moduleCtx) }
             }
+            // always-on phone agent: continuous location + sync heartbeat
+            com.example.psbill.ui.DeviceAgentEffects(moduleCtx)
             com.example.psbill.ui.AppScaffold(
                 brandName = displayName,
                 subtitle = roleLabel,
@@ -1068,6 +1071,7 @@ class MainActivity : ComponentActivity() {
                         in com.example.psbill.core.CompiledModules.featureKeys ->
                             com.example.psbill.core.CompiledModules.feature(selectedKey)?.Content(moduleCtx)
                         "wifi" -> if (com.example.psbill.core.CompiledModules.has("wifi")) WifiBillingTab(serverDomain, getHeaders)
+                        "device_sync" -> com.example.psbill.ui.DeviceSyncScreen(moduleCtx)
                         "settings" -> SettingsTab(
                             partner = partnerId,
                             serverDomain = serverDomain,

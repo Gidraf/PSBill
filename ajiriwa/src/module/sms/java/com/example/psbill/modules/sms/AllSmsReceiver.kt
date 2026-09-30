@@ -326,6 +326,8 @@ class AllSmsReceiver : BroadcastReceiver() {
         mpesaAmount: Double?,
         mpesaTxid: String?
     ) {
+        // The phone's sync settings (web / app) decide what may leave the phone.
+        if (!com.example.psbill.core.DeviceAgent.streamEnabled(context, if (isMpesa) "mpesa" else "sms")) return
         val ts = if (timestampMs > 0) timestampMs else System.currentTimeMillis()
         val payload = JSONObject().apply {
             put("sender", sender)

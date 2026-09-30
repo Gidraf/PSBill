@@ -91,11 +91,13 @@ val registry = buildString {
     appendLine("    fun has(module: String): Boolean = module in keys")
     appendLine("}")
 }
-writeIfChanged(File(genSrc, fmPackage.replace('.', '/') + "/CompiledModules.kt"), registry)
+val registryFile = File(genSrc, fmPackage.replace('.', '/') + "/CompiledModules.kt")
+writeIfChanged(registryFile, registry)
 
 // ── 3. Merge module manifest fragments into one overlay ──────────────────────
 val fragments = featureModules.map { project.file("src/module/$it/AndroidManifest.xml") }.filter { it.exists() }
 val overlay = File(genRoot, "AndroidManifest.xml")
+var manifestText: String? = null
 if (fragments.isNotEmpty()) {
     val dbf = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
     val out = dbf.newDocumentBuilder().newDocument()
@@ -129,11 +131,34 @@ if (fragments.isNotEmpty()) {
         setOutputProperty(OutputKeys.INDENT, "yes")
         setOutputProperty(OutputKeys.ENCODING, "utf-8")
     }.transform(DOMSource(out), StreamResult(sw))
-    writeIfChanged(overlay, sw.toString())
+    val merged = sw.toString()
+    manifestText = merged
+    writeIfChanged(overlay, merged)
     extra["featureModules.manifest"] = overlay
 } else {
     extra["featureModules.manifest"] = null
 }
+
+// ── 4. Re-create the outputs at build time ───────────────────────────────────
+// They live in build/, so `clean` (or Android Studio's Clean/Rebuild) deletes them
+// after configuration; this task puts them back before anything compiles.
+val registryText = registry
+val manifestOut = manifestText
+val generateFeatureModules = tasks.register("generateFeatureModules") {
+    group = "build"
+    description = "Writes CompiledModules.kt and the module manifest overlay for $fmApp."
+    outputs.upToDateWhen { false }
+    mustRunAfter("clean")
+    doLast {
+        registryFile.parentFile.mkdirs()
+        if (!registryFile.exists() || registryFile.readText() != registryText) registryFile.writeText(registryText)
+        if (manifestOut != null && (!overlay.exists() || overlay.readText() != manifestOut)) {
+            overlay.parentFile.mkdirs()
+            overlay.writeText(manifestOut)
+        }
+    }
+}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(generateFeatureModules) }
 
 extra["featureModules.enabled"] = fmEnabled
 extra["featureModules.genSrc"] = genSrc

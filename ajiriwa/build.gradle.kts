@@ -21,6 +21,11 @@ val enabledModules = extra["featureModules.enabled"] as List<String>
 val moduleManifest = extra["featureModules.manifest"] as File?
 val moduleGenSrc = extra["featureModules.genSrc"] as File
 
+// ── Release version + signing (set by tools/server-build; local builds stay 1 / unsigned) ──
+val releaseVersionCode = (findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
+val releaseVersionName = (findProperty("appVersionName") as String?) ?: "1.0"
+val releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
+
 android {
     namespace = "com.example.psbill"
     compileSdk = 35
@@ -29,14 +34,24 @@ android {
         applicationId = "com.example.psbill.mobile"
         minSdk = 21
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) create("release") {
+            storeFile = releaseKeystore
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

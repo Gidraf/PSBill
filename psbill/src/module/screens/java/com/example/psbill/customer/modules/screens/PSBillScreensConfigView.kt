@@ -314,7 +314,7 @@ fun PSBillScreensConfigView(
                                     onValueChange = {},
                                     readOnly = true,
                                     label = { Text("Game") },
-                                    modifier = modifier.menuAnchor(),
+                                    modifier = modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable),
                                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = gamesMenuOpen) }
                                 )
                                 ExposedDropdownMenu(expanded = gamesMenuOpen, onDismissRequest = { gamesMenuOpen = false }) {
@@ -339,7 +339,7 @@ fun PSBillScreensConfigView(
                                     onValueChange = {},
                                     readOnly = true,
                                     label = { Text("Billing") },
-                                    modifier = modifier.menuAnchor(),
+                                    modifier = modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable),
                                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = billingMenuOpen) }
                                 )
                                 ExposedDropdownMenu(expanded = billingMenuOpen, onDismissRequest = { billingMenuOpen = false }) {

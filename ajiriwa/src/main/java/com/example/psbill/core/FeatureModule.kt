@@ -48,6 +48,9 @@ abstract class FeatureModule {
 
     /** Called when the user signs out. */
     open fun onLogout(context: Context) {}
+
+    /** Phone data this module can upload on request (SMS, calls, contacts…); see [DeviceAgent]. */
+    open val syncStreams: List<SyncStream> get() = emptyList()
 }
 
 /** Nav keys served by compiled feature modules. */

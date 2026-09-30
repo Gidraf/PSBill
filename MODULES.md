@@ -49,6 +49,19 @@ The build prints what it compiled, e.g.
 removes them from navigation and stops their background polling, but their code
 is still compiled until it is split out of `MainActivity`.
 
+`CompiledModules.kt` and the merged module manifest are generated under `build/`; the
+`generateFeatureModules` task (run before `preBuild`) writes them again, so Clean /
+Rebuild in Android Studio no longer ends in "Unresolved reference 'CompiledModules'".
+
+## Phone agent (always compiled, Ajiriwa)
+
+`DeliveryTrackingService` (core, started after sign-in and on boot) tracks location all
+day into `LocationOutbox` (offline-safe, uploaded in batches) and runs `DeviceAgent`:
+a heartbeat every ~60 s (`/api/v1/mobile/heartbeat`) that reports what is waiting to
+upload and picks up sync requests from the web / app. Modules add sync streams through
+`FeatureModule.syncStreams` (the SMS module adds SMS, M-Pesa, calls, contacts). UI:
+drawer → **Sync & tracking** (this phone, all phones, synced data, movement).
+
 ## Building on this Mac
 
 `gradle.properties` sets `-Djavax.net.ssl.trustStoreType=KeychainStore`, which

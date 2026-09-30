@@ -100,6 +100,7 @@ object GatewayOutbox {
                     .post(item.optString("body").toRequestBody(JSON))
                     .header("Authorization", "Bearer $token")
                     .apply { if (partnerId.isNotBlank()) header("X-Partner-Id", partnerId) }
+                    .header("X-Device-Id", com.example.psbill.core.DeviceIdentity.installId(context))
                     .build()
                 val outcome = try {
                     http.newCall(req).execute().use { resp ->

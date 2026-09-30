@@ -297,7 +297,7 @@ fun SpecInput(field: JSONObject, value: Any?, onChange: (Any?) -> Unit) {
                     value = options.firstOrNull { it.optString("value") == value }?.optString("label") ?: "",
                     onValueChange = {}, readOnly = true, label = { Text(label) }, colors = colors,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(open) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
                 )
                 ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                     DropdownMenuItem(text = { Text("Not set") }, onClick = { onChange(null); open = false })

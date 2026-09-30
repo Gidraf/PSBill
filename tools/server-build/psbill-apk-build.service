@@ -1,0 +1,11 @@
+[Unit]
+Description=Build and publish the Ajiriwa / PSBill Android apps
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/psbill-build/PSBill/tools/server-build
+ExecStart=/opt/psbill-build/PSBill/tools/server-build/build-and-publish.sh
+TimeoutStartSec=3600
+Nice=10
