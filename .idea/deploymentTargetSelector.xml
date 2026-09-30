@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="deploymentTargetSelector">
+    <selectionStates>
+      <SelectionState runConfigName="tv">
+        <option name="selectionMode" value="DROPDOWN" />
+        <DropdownSelection timestamp="2026-08-13T19:31:15.678129Z">
+          <Target type="DEFAULT_BOOT">
+            <handle>
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=dirshe6tqs95ojjf" />
+            </handle>
+          </Target>
+        </DropdownSelection>
+        <DialogSelection />
+      </SelectionState>
+      <SelectionState runConfigName="customer_mobile">
+        <option name="selectionMode" value="DROPDOWN" />
+        <DropdownSelection timestamp="2026-06-20T12:51:32.465184Z">
+          <Target type="DEFAULT_BOOT">
+            <handle>
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=dirshe6tqs95ojjf" />
+            </handle>
+          </Target>
+        </DropdownSelection>
+        <DialogSelection />
+      </SelectionState>
+      <SelectionState runConfigName="psbill">
+        <option name="selectionMode" value="DROPDOWN" />
+        <DropdownSelection timestamp="2026-08-13T19:28:13.485497Z">
+          <Target type="DEFAULT_BOOT">
+            <handle>
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=dirshe6tqs95ojjf" />
+            </handle>
+          </Target>
+        </DropdownSelection>
+        <DialogSelection />
+      </SelectionState>
+      <SelectionState runConfigName="ajiriwa">
+        <option name="selectionMode" value="DROPDOWN" />
+        <DropdownSelection timestamp="2026-06-20T12:51:32.465184Z">
+          <Target type="DEFAULT_BOOT">
+            <handle>
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=dirshe6tqs95ojjf" />
+            </handle>
+          </Target>
+        </DropdownSelection>
+        <DialogSelection />
+      </SelectionState>
+    </selectionStates>
+  </component>
+</project>

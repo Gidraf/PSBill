@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Full-resolution camera captures for property photos (EXIF kept) -->
+    <cache-path name="property_photos" path="property_photos/" />
+</paths>

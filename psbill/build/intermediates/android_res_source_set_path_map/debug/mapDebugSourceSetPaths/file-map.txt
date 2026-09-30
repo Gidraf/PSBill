@@ -1,0 +1,7 @@
+com.example.psbill.customer.psbill-updated_navigation_xml-0 /Users/gmtange/Projects/PSBill/psbill/build/generated/updated_navigation_xml/debug
+com.example.psbill.customer.psbill-packageDebugResources-1 /Users/gmtange/Projects/PSBill/psbill/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.example.psbill.customer.psbill-packageDebugResources-2 /Users/gmtange/Projects/PSBill/psbill/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.example.psbill.customer.psbill-debug-3 /Users/gmtange/Projects/PSBill/psbill/build/intermediates/merged_res/debug/mergeDebugResources
+com.example.psbill.customer.psbill-debug-4 /Users/gmtange/Projects/PSBill/psbill/src/debug/res
+com.example.psbill.customer.psbill-main-5 /Users/gmtange/Projects/PSBill/psbill/src/main/res
+gradleHome-0 /Users/gmtange/.gradle

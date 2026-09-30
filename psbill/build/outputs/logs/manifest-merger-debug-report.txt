@@ -1,0 +1,627 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:2:1-31:12
+INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:2:1-31:12
+INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:2:1-31:12
+INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:2:1-31:12
+MERGED from [com.google.android.material:material:1.12.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/5bb78f21ec9a1988e308e536119603f2/transformed/material-1.12.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/39c01ad8c5efbd5a3483bde4af828b9f/transformed/constraintlayout-2.2.0/AndroidManifest.xml:2:1-9:12
+MERGED from [androidx.camera:camera-video:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/48fd836d8ef6fbb246269ee1a5f443ec/transformed/camera-video-1.4.1/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:17:1-36:12
+MERGED from [androidx.camera:camera-lifecycle:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/5661d0b3ca964d1f37c4e152321f3fde/transformed/camera-lifecycle-1.4.1/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:17:1-36:12
+MERGED from [androidx.camera:camera-view:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/5741342b0fa20fc419c3d8d48c637e21/transformed/camera-view-1.4.1/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.appcompat:appcompat-resources:1.7.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2dc5ff27e7df0e2aebdd9e42f72a3d8e/transformed/appcompat-resources-1.7.0/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.mlkit:barcode-scanning:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/515a58b4bec40779e107bbed6f28421c/transformed/barcode-scanning-17.3.0/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:2:1-18:12
+MERGED from [com.google.mlkit:barcode-scanning-common:17.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/f3065bb4118dd2bfa38258beffd841d1/transformed/barcode-scanning-common-17.0.0/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:2:1-18:12
+MERGED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:2:1-26:12
+MERGED from [androidx.appcompat:appcompat:1.7.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/525ffd39b5b0bd219313118259983414/transformed/appcompat-1.7.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/80d601edb9c23f8ff91764045d778421/transformed/viewpager2-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.mlkit:vision-interfaces:16.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/c4271d6d8ba62df6197fcd67c9418227/transformed/vision-interfaces-16.3.0/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d0fd21a19c7733b178c8bc9e32afa2d0/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:2:1-5:12
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/012b3d470506ee6ec007bbb30de09c8b/transformed/play-services-basement-18.4.0/AndroidManifest.xml:2:1-9:12
+MERGED from [androidx.fragment:fragment:1.5.4] /Users/gmtange/.gradle/caches/9.5.0/transforms/d8e3a8ba4796f6612e3a11f760120f72/transformed/fragment-1.5.4/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.emoji2:emoji2-views-helper:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/0f13bfed50050e6f5a17ac7ec5661659/transformed/emoji2-views-helper-1.3.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material3:material3-android:1.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/242312c5e1c858f8e6417585c3ab7616/transformed/material3-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.compose.material:material-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/109df42fc0f611458468a487dad7e782/transformed/material-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material:material-ripple-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/855a035c9003f111963ce9c53cb5c61f/transformed/material-ripple-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.foundation:foundation-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/11dc0e425169feb9c65613f106f6ea16/transformed/foundation-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.animation:animation-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/392fc2a66096295b324dc3abb864e657/transformed/animation-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/5791b8e18ce46367a9ebcf50ab37e4a2/transformed/foundation-layout-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.animation:animation-core-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/23c4bd40d443cb9788b4ab68250ce9c1/transformed/animation-core-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-tooling-data-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/b62ad950111904bed77e24b520dbc9cb/transformed/ui-tooling-data-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-unit-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d8034e73ec30eca854e021fb1117b4e0/transformed/ui-unit-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-geometry-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f7b02f3ef41bc18e44418b444aeba67d/transformed/ui-geometry-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-util-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/78174846ef1c4e58a980e5fccbd24c6a/transformed/ui-util-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a9bc4fab859ca026d9f428b4727ddb43/transformed/ui-tooling-preview-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.compose.ui:ui-tooling-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a3bd1bebaea923eb570966cbed78dcbd/transformed/ui-tooling-release/AndroidManifest.xml:17:1-28:12
+MERGED from [androidx.compose.ui:ui-graphics-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/ae56948ba18cfff66e44ff67aae8f365/transformed/ui-graphics-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-test-manifest:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d935f92d23a41b4fa0663cbef988365b/transformed/ui-test-manifest-1.7.5/AndroidManifest.xml:17:1-28:12
+MERGED from [androidx.compose.ui:ui-text-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f17f78fbb0f03326ed014143d982d73a/transformed/ui-text-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.transition:transition:1.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/58a5aef07d0727321af1b12557c7aba0/transformed/transition-1.5.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/4d6d72389100e7cea5094939a6bac127/transformed/dynamicanimation-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b13df36a6612408d89a7329a910704f6/transformed/legacy-support-core-utils-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.loader:loader:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/832cc2712875b462c51d30a3567ff8d4/transformed/loader-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/007ae0164f548a1c6657dabd973a1a70/transformed/savedstate-ktx-1.2.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.savedstate:savedstate:1.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d87b0305e31262836aa23761e21c2211/transformed/savedstate-1.2.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-runtime-compose-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/a2b5e58fdc1a3f886d9fbc27b41f7adb/transformed/lifecycle-runtime-compose-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/328667764e6d3581bec125459781987c/transformed/lifecycle-livedata-core-ktx-2.8.7/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/54468691af6abb2dd323fd76572f6e02/transformed/lifecycle-livedata-2.8.7/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-runtime-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/0ab63a0060974eb3539aa81785a9a94b/transformed/lifecycle-runtime-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/34c96bb5da84ab9ae9626e48a050d2b4/transformed/lifecycle-viewmodel-2.8.7/AndroidManifest.xml:2:1-5:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/7a8550fbbb9547243385e64ef6565c13/transformed/lifecycle-viewmodel-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/1dc08ccedb5ac3c2c05770c27867da00/transformed/lifecycle-livedata-core-2.8.7/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/661d1ab23c0d2b4b30c81c2622c98cbc/transformed/lifecycle-viewmodel-savedstate-2.8.7/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/a9989f0bde5ca2201a6d676c9af50fac/transformed/lifecycle-runtime-ktx-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/643a98a2ca7e086fc763675520b1c584/transformed/lifecycle-viewmodel-ktx-2.8.7/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/6385b65ebd2c87e67f6ca2b5fd162321/transformed/lifecycle-viewmodel-compose-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material:material-icons-extended-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/0da3429d4c7ff515a268f4921a994787/transformed/material-icons-extended-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material:material-icons-core-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/365522afd2c6ccf682f9e6abeaa629ff/transformed/material-icons-core-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f5599476dd63c64dd9d2aca3ab9db664/transformed/ui-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.activity:activity-ktx:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef387e5afe8dd0424e5f78abaa7f7ca7/transformed/activity-ktx-1.9.3/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.activity:activity-compose:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/3228465bed896939a7a8968967fad413/transformed/activity-compose-1.9.3/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.activity:activity:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/dedb8a0c569dd16e13658bf66cd15756/transformed/activity-1.9.3/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/b83ca47823986a6059b55ff82685927d/transformed/drawerlayout-1.1.1/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/79b210a280f35a9d913ef21add15015a/transformed/coordinatorlayout-1.1.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/9a0dcbece6ca14b3affe9a6b25f193f8/transformed/vectordrawable-animated-1.1.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee5adc8c2b63c7ac8341aad8557b7e9a/transformed/vectordrawable-1.1.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b0c68fb433a2446f75669efce0e943ed/transformed/viewpager-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/6e7a4421bb3b4bbff5240422a5628bba/transformed/recyclerview-1.1.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.customview:customview:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/f8d543b88beeabb32a68cf3403d8f156/transformed/customview-1.1.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.autofill:autofill:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/41cce18a4b487000200436c117adc1b5/transformed/autofill-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.graphics:graphics-path:1.0.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/9421250f7388f4b7ac7c2c664212203f/transformed/graphics-path-1.0.1/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:17:1-30:12
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/571cc1662826584e3b209b48ed25473b/transformed/customview-poolingcontainer-1.0.0/AndroidManifest.xml:17:1-23:12
+MERGED from [androidx.core:core-ktx:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b996831d1872a5c4a32c4b20309d9d4e/transformed/core-ktx-1.15.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:17:1-55:12
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d81c0d91f26266b8784f86b35c85c287/transformed/startup-runtime-1.1.1/AndroidManifest.xml:17:1-33:12
+MERGED from [androidx.tracing:tracing:1.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/892ed836b8367fbcb53ed91a546e34a1/transformed/tracing-1.2.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.tracing:tracing-ktx:1.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d64872fe9eb75c96f6a4adda6f975597/transformed/tracing-ktx-1.2.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f628434eed3b88d15e2885711877e2a7/transformed/runtime-saveable-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.runtime:runtime-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/aff864f7ea2919d06a07d197a3c51a7d/transformed/runtime-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/3f09888f68d0c56d84b8c7f6653dcc60/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/7ccec8c5ca2248c5f17bc31a7465cbbe/transformed/cursoradapter-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.cardview:cardview:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2479db9c3720c6f95dc3bbfaa8ecef83/transformed/cardview-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.interpolator:interpolator:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/22fc9d3ffd6886d1465c55e110c15d2a/transformed/interpolator-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/0ae9f28bb143fdea0aa1657b066e7be9/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:17:1-27:12
+MERGED from [androidx.exifinterface:exifinterface:1.3.2] /Users/gmtange/.gradle/caches/9.5.0/transforms/891f2e4a950d0f37ff7512afe4875132/transformed/exifinterface-1.3.2/AndroidManifest.xml:17:1-24:12
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:15:1-38:12
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:15:1-41:12
+MERGED from [com.google.android.datatransport:transport-api:2.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/7d50bfdd25c40fc1e001d408e6865694/transformed/transport-api-2.2.1/AndroidManifest.xml:15:1-22:12
+MERGED from [com.google.firebase:firebase-components:16.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/3f3565b2af15eab7583ca880b5e08bc4/transformed/firebase-components-16.1.0/AndroidManifest.xml:15:1-23:12
+MERGED from [com.google.firebase:firebase-encoders-json:17.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d5d40b497f874d61522a77eecdd53616/transformed/firebase-encoders-json-17.1.0/AndroidManifest.xml:15:1-23:12
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/1c1a15c50f92742c32f6a4046ba3457d/transformed/core-runtime-2.2.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.documentfile:documentfile:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/4a557e564b25afe8ea4e84544e9bb8a5/transformed/documentfile-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2462b394328f38b2031a26e43c5ee592/transformed/localbroadcastmanager-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.print:print:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/c75a61256b32d7a769154721851cc4a7/transformed/print-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [com.google.android.odml:image:1.0.0-beta1] /Users/gmtange/.gradle/caches/9.5.0/transforms/3c66c0489d77b4a66d5dcb675230a77c/transformed/image-1.0.0-beta1/AndroidManifest.xml:2:1-9:12
+	package
+		INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml
+	android:versionName
+		INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml
+	android:versionCode
+		INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.INTERNET
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:4:5-67
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:26:5-67
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:26:5-67
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:4:22-64
+uses-permission#android.permission.ACCESS_NETWORK_STATE
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:5:5-79
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:25:5-79
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:25:5-79
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:22:5-79
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:22:5-79
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:5:22-76
+uses-permission#android.permission.ACCESS_WIFI_STATE
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:6:5-76
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:6:22-73
+uses-permission#android.permission.CAMERA
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:7:5-65
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:7:22-62
+uses-permission#android.permission.VIBRATE
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:8:5-66
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:8:22-63
+uses-feature#android.hardware.camera
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:10:5-85
+	android:required
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:10:58-82
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:10:19-57
+application
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:12:5-29:19
+INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:12:5-29:19
+MERGED from [com.google.android.material:material:1.12.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/5bb78f21ec9a1988e308e536119603f2/transformed/material-1.12.0/AndroidManifest.xml:22:5-20
+MERGED from [com.google.android.material:material:1.12.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/5bb78f21ec9a1988e308e536119603f2/transformed/material-1.12.0/AndroidManifest.xml:22:5-20
+MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/39c01ad8c5efbd5a3483bde4af828b9f/transformed/constraintlayout-2.2.0/AndroidManifest.xml:7:5-20
+MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/39c01ad8c5efbd5a3483bde4af828b9f/transformed/constraintlayout-2.2.0/AndroidManifest.xml:7:5-20
+MERGED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:23:5-34:19
+MERGED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:23:5-34:19
+MERGED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:23:5-34:19
+MERGED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:23:5-34:19
+MERGED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:8:5-16:19
+MERGED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:8:5-16:19
+MERGED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:8:5-16:19
+MERGED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:8:5-16:19
+MERGED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:8:5-24:19
+MERGED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:8:5-24:19
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:4:5-6:19
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:4:5-6:19
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d0fd21a19c7733b178c8bc9e32afa2d0/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:4:5-20
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d0fd21a19c7733b178c8bc9e32afa2d0/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:4:5-20
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/012b3d470506ee6ec007bbb30de09c8b/transformed/play-services-basement-18.4.0/AndroidManifest.xml:5:5-7:19
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/012b3d470506ee6ec007bbb30de09c8b/transformed/play-services-basement-18.4.0/AndroidManifest.xml:5:5-7:19
+MERGED from [androidx.compose.ui:ui-tooling-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a3bd1bebaea923eb570966cbed78dcbd/transformed/ui-tooling-release/AndroidManifest.xml:22:5-26:19
+MERGED from [androidx.compose.ui:ui-tooling-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a3bd1bebaea923eb570966cbed78dcbd/transformed/ui-tooling-release/AndroidManifest.xml:22:5-26:19
+MERGED from [androidx.compose.ui:ui-test-manifest:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d935f92d23a41b4fa0663cbef988365b/transformed/ui-test-manifest-1.7.5/AndroidManifest.xml:22:5-26:19
+MERGED from [androidx.compose.ui:ui-test-manifest:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d935f92d23a41b4fa0663cbef988365b/transformed/ui-test-manifest-1.7.5/AndroidManifest.xml:22:5-26:19
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:28:5-89
+MERGED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:28:5-89
+MERGED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:23:5-53:19
+MERGED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:23:5-53:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d81c0d91f26266b8784f86b35c85c287/transformed/startup-runtime-1.1.1/AndroidManifest.xml:25:5-31:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d81c0d91f26266b8784f86b35c85c287/transformed/startup-runtime-1.1.1/AndroidManifest.xml:25:5-31:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/0ae9f28bb143fdea0aa1657b066e7be9/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/0ae9f28bb143fdea0aa1657b066e7be9/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:24:5-25:19
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:28:5-36:19
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:28:5-36:19
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:25:5-39:19
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:25:5-39:19
+MERGED from [com.google.android.odml:image:1.0.0-beta1] /Users/gmtange/.gradle/caches/9.5.0/transforms/3c66c0489d77b4a66d5dcb675230a77c/transformed/image-1.0.0-beta1/AndroidManifest.xml:7:5-20
+MERGED from [com.google.android.odml:image:1.0.0-beta1] /Users/gmtange/.gradle/caches/9.5.0/transforms/3c66c0489d77b4a66d5dcb675230a77c/transformed/image-1.0.0-beta1/AndroidManifest.xml:7:5-20
+	android:extractNativeLibs
+		INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml
+	android:appComponentFactory
+		ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:28:18-86
+	android:supportsRtl
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:17:9-35
+	android:label
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:15:9-41
+	android:roundIcon
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:16:9-54
+	android:icon
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:14:9-43
+	android:allowBackup
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:13:9-35
+	android:theme
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:18:9-44
+activity#com.example.psbill.customer.MainActivity
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:19:9-28:20
+	android:exported
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:21:13-36
+	android:configChanges
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:22:13-87
+	android:theme
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:23:13-48
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:20:13-41
+intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:24:13-27:29
+action#android.intent.action.MAIN
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:25:17-69
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:25:25-66
+category#android.intent.category.LAUNCHER
+ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:26:17-77
+	android:name
+		ADDED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml:26:27-74
+uses-sdk
+INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml
+INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml
+MERGED from [com.google.android.material:material:1.12.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/5bb78f21ec9a1988e308e536119603f2/transformed/material-1.12.0/AndroidManifest.xml:20:5-44
+MERGED from [com.google.android.material:material:1.12.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/5bb78f21ec9a1988e308e536119603f2/transformed/material-1.12.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/39c01ad8c5efbd5a3483bde4af828b9f/transformed/constraintlayout-2.2.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/39c01ad8c5efbd5a3483bde4af828b9f/transformed/constraintlayout-2.2.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.camera:camera-video:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/48fd836d8ef6fbb246269ee1a5f443ec/transformed/camera-video-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.camera:camera-video:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/48fd836d8ef6fbb246269ee1a5f443ec/transformed/camera-video-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:21:5-44
+MERGED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:21:5-44
+MERGED from [androidx.camera:camera-lifecycle:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/5661d0b3ca964d1f37c4e152321f3fde/transformed/camera-lifecycle-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.camera:camera-lifecycle:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/5661d0b3ca964d1f37c4e152321f3fde/transformed/camera-lifecycle-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:21:5-44
+MERGED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:21:5-44
+MERGED from [androidx.camera:camera-view:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/5741342b0fa20fc419c3d8d48c637e21/transformed/camera-view-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.camera:camera-view:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/5741342b0fa20fc419c3d8d48c637e21/transformed/camera-view-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.appcompat:appcompat-resources:1.7.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2dc5ff27e7df0e2aebdd9e42f72a3d8e/transformed/appcompat-resources-1.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.appcompat:appcompat-resources:1.7.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2dc5ff27e7df0e2aebdd9e42f72a3d8e/transformed/appcompat-resources-1.7.0/AndroidManifest.xml:5:5-44
+MERGED from [com.google.mlkit:barcode-scanning:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/515a58b4bec40779e107bbed6f28421c/transformed/barcode-scanning-17.3.0/AndroidManifest.xml:5:5-44
+MERGED from [com.google.mlkit:barcode-scanning:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/515a58b4bec40779e107bbed6f28421c/transformed/barcode-scanning-17.3.0/AndroidManifest.xml:5:5-44
+MERGED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:6:5-44
+MERGED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:6:5-44
+MERGED from [com.google.mlkit:barcode-scanning-common:17.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/f3065bb4118dd2bfa38258beffd841d1/transformed/barcode-scanning-common-17.0.0/AndroidManifest.xml:5:5-44
+MERGED from [com.google.mlkit:barcode-scanning-common:17.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/f3065bb4118dd2bfa38258beffd841d1/transformed/barcode-scanning-common-17.0.0/AndroidManifest.xml:5:5-44
+MERGED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:6:5-44
+MERGED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:6:5-44
+MERGED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:6:5-44
+MERGED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:6:5-44
+MERGED from [androidx.appcompat:appcompat:1.7.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/525ffd39b5b0bd219313118259983414/transformed/appcompat-1.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.appcompat:appcompat:1.7.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/525ffd39b5b0bd219313118259983414/transformed/appcompat-1.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/80d601edb9c23f8ff91764045d778421/transformed/viewpager2-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/80d601edb9c23f8ff91764045d778421/transformed/viewpager2-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.mlkit:vision-interfaces:16.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/c4271d6d8ba62df6197fcd67c9418227/transformed/vision-interfaces-16.3.0/AndroidManifest.xml:5:5-44
+MERGED from [com.google.mlkit:vision-interfaces:16.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/c4271d6d8ba62df6197fcd67c9418227/transformed/vision-interfaces-16.3.0/AndroidManifest.xml:5:5-44
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d0fd21a19c7733b178c8bc9e32afa2d0/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d0fd21a19c7733b178c8bc9e32afa2d0/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/012b3d470506ee6ec007bbb30de09c8b/transformed/play-services-basement-18.4.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/012b3d470506ee6ec007bbb30de09c8b/transformed/play-services-basement-18.4.0/AndroidManifest.xml:3:5-44
+MERGED from [androidx.fragment:fragment:1.5.4] /Users/gmtange/.gradle/caches/9.5.0/transforms/d8e3a8ba4796f6612e3a11f760120f72/transformed/fragment-1.5.4/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.fragment:fragment:1.5.4] /Users/gmtange/.gradle/caches/9.5.0/transforms/d8e3a8ba4796f6612e3a11f760120f72/transformed/fragment-1.5.4/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.emoji2:emoji2-views-helper:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/0f13bfed50050e6f5a17ac7ec5661659/transformed/emoji2-views-helper-1.3.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.emoji2:emoji2-views-helper:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/0f13bfed50050e6f5a17ac7ec5661659/transformed/emoji2-views-helper-1.3.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material3:material3-android:1.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/242312c5e1c858f8e6417585c3ab7616/transformed/material3-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.material3:material3-android:1.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/242312c5e1c858f8e6417585c3ab7616/transformed/material3-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.material:material-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/109df42fc0f611458468a487dad7e782/transformed/material-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/109df42fc0f611458468a487dad7e782/transformed/material-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-ripple-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/855a035c9003f111963ce9c53cb5c61f/transformed/material-ripple-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-ripple-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/855a035c9003f111963ce9c53cb5c61f/transformed/material-ripple-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/11dc0e425169feb9c65613f106f6ea16/transformed/foundation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/11dc0e425169feb9c65613f106f6ea16/transformed/foundation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/392fc2a66096295b324dc3abb864e657/transformed/animation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/392fc2a66096295b324dc3abb864e657/transformed/animation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/5791b8e18ce46367a9ebcf50ab37e4a2/transformed/foundation-layout-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/5791b8e18ce46367a9ebcf50ab37e4a2/transformed/foundation-layout-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-core-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/23c4bd40d443cb9788b4ab68250ce9c1/transformed/animation-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-core-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/23c4bd40d443cb9788b4ab68250ce9c1/transformed/animation-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-tooling-data-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/b62ad950111904bed77e24b520dbc9cb/transformed/ui-tooling-data-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-tooling-data-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/b62ad950111904bed77e24b520dbc9cb/transformed/ui-tooling-data-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-unit-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d8034e73ec30eca854e021fb1117b4e0/transformed/ui-unit-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-unit-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d8034e73ec30eca854e021fb1117b4e0/transformed/ui-unit-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-geometry-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f7b02f3ef41bc18e44418b444aeba67d/transformed/ui-geometry-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-geometry-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f7b02f3ef41bc18e44418b444aeba67d/transformed/ui-geometry-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-util-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/78174846ef1c4e58a980e5fccbd24c6a/transformed/ui-util-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-util-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/78174846ef1c4e58a980e5fccbd24c6a/transformed/ui-util-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a9bc4fab859ca026d9f428b4727ddb43/transformed/ui-tooling-preview-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a9bc4fab859ca026d9f428b4727ddb43/transformed/ui-tooling-preview-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-tooling-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a3bd1bebaea923eb570966cbed78dcbd/transformed/ui-tooling-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-tooling-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a3bd1bebaea923eb570966cbed78dcbd/transformed/ui-tooling-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-graphics-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/ae56948ba18cfff66e44ff67aae8f365/transformed/ui-graphics-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-graphics-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/ae56948ba18cfff66e44ff67aae8f365/transformed/ui-graphics-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-test-manifest:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d935f92d23a41b4fa0663cbef988365b/transformed/ui-test-manifest-1.7.5/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-test-manifest:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d935f92d23a41b4fa0663cbef988365b/transformed/ui-test-manifest-1.7.5/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-text-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f17f78fbb0f03326ed014143d982d73a/transformed/ui-text-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-text-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f17f78fbb0f03326ed014143d982d73a/transformed/ui-text-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.transition:transition:1.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/58a5aef07d0727321af1b12557c7aba0/transformed/transition-1.5.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.transition:transition:1.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/58a5aef07d0727321af1b12557c7aba0/transformed/transition-1.5.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/4d6d72389100e7cea5094939a6bac127/transformed/dynamicanimation-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/4d6d72389100e7cea5094939a6bac127/transformed/dynamicanimation-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b13df36a6612408d89a7329a910704f6/transformed/legacy-support-core-utils-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b13df36a6612408d89a7329a910704f6/transformed/legacy-support-core-utils-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/832cc2712875b462c51d30a3567ff8d4/transformed/loader-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/832cc2712875b462c51d30a3567ff8d4/transformed/loader-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/007ae0164f548a1c6657dabd973a1a70/transformed/savedstate-ktx-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/007ae0164f548a1c6657dabd973a1a70/transformed/savedstate-ktx-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d87b0305e31262836aa23761e21c2211/transformed/savedstate-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d87b0305e31262836aa23761e21c2211/transformed/savedstate-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-compose-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/a2b5e58fdc1a3f886d9fbc27b41f7adb/transformed/lifecycle-runtime-compose-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-compose-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/a2b5e58fdc1a3f886d9fbc27b41f7adb/transformed/lifecycle-runtime-compose-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/328667764e6d3581bec125459781987c/transformed/lifecycle-livedata-core-ktx-2.8.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/328667764e6d3581bec125459781987c/transformed/lifecycle-livedata-core-ktx-2.8.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/54468691af6abb2dd323fd76572f6e02/transformed/lifecycle-livedata-2.8.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/54468691af6abb2dd323fd76572f6e02/transformed/lifecycle-livedata-2.8.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/0ab63a0060974eb3539aa81785a9a94b/transformed/lifecycle-runtime-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/0ab63a0060974eb3539aa81785a9a94b/transformed/lifecycle-runtime-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/34c96bb5da84ab9ae9626e48a050d2b4/transformed/lifecycle-viewmodel-2.8.7/AndroidManifest.xml:4:5-43
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/34c96bb5da84ab9ae9626e48a050d2b4/transformed/lifecycle-viewmodel-2.8.7/AndroidManifest.xml:4:5-43
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/7a8550fbbb9547243385e64ef6565c13/transformed/lifecycle-viewmodel-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/7a8550fbbb9547243385e64ef6565c13/transformed/lifecycle-viewmodel-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/1dc08ccedb5ac3c2c05770c27867da00/transformed/lifecycle-livedata-core-2.8.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/1dc08ccedb5ac3c2c05770c27867da00/transformed/lifecycle-livedata-core-2.8.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/661d1ab23c0d2b4b30c81c2622c98cbc/transformed/lifecycle-viewmodel-savedstate-2.8.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/661d1ab23c0d2b4b30c81c2622c98cbc/transformed/lifecycle-viewmodel-savedstate-2.8.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/a9989f0bde5ca2201a6d676c9af50fac/transformed/lifecycle-runtime-ktx-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/a9989f0bde5ca2201a6d676c9af50fac/transformed/lifecycle-runtime-ktx-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/643a98a2ca7e086fc763675520b1c584/transformed/lifecycle-viewmodel-ktx-2.8.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/643a98a2ca7e086fc763675520b1c584/transformed/lifecycle-viewmodel-ktx-2.8.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/6385b65ebd2c87e67f6ca2b5fd162321/transformed/lifecycle-viewmodel-compose-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/6385b65ebd2c87e67f6ca2b5fd162321/transformed/lifecycle-viewmodel-compose-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-extended-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/0da3429d4c7ff515a268f4921a994787/transformed/material-icons-extended-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-extended-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/0da3429d4c7ff515a268f4921a994787/transformed/material-icons-extended-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-core-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/365522afd2c6ccf682f9e6abeaa629ff/transformed/material-icons-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-core-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/365522afd2c6ccf682f9e6abeaa629ff/transformed/material-icons-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f5599476dd63c64dd9d2aca3ab9db664/transformed/ui-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f5599476dd63c64dd9d2aca3ab9db664/transformed/ui-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-ktx:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef387e5afe8dd0424e5f78abaa7f7ca7/transformed/activity-ktx-1.9.3/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-ktx:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef387e5afe8dd0424e5f78abaa7f7ca7/transformed/activity-ktx-1.9.3/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-compose:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/3228465bed896939a7a8968967fad413/transformed/activity-compose-1.9.3/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-compose:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/3228465bed896939a7a8968967fad413/transformed/activity-compose-1.9.3/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/dedb8a0c569dd16e13658bf66cd15756/transformed/activity-1.9.3/AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity:1.9.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/dedb8a0c569dd16e13658bf66cd15756/transformed/activity-1.9.3/AndroidManifest.xml:20:5-44
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/b83ca47823986a6059b55ff82685927d/transformed/drawerlayout-1.1.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/b83ca47823986a6059b55ff82685927d/transformed/drawerlayout-1.1.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/79b210a280f35a9d913ef21add15015a/transformed/coordinatorlayout-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/79b210a280f35a9d913ef21add15015a/transformed/coordinatorlayout-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/9a0dcbece6ca14b3affe9a6b25f193f8/transformed/vectordrawable-animated-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/9a0dcbece6ca14b3affe9a6b25f193f8/transformed/vectordrawable-animated-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee5adc8c2b63c7ac8341aad8557b7e9a/transformed/vectordrawable-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee5adc8c2b63c7ac8341aad8557b7e9a/transformed/vectordrawable-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b0c68fb433a2446f75669efce0e943ed/transformed/viewpager-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b0c68fb433a2446f75669efce0e943ed/transformed/viewpager-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/6e7a4421bb3b4bbff5240422a5628bba/transformed/recyclerview-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/6e7a4421bb3b4bbff5240422a5628bba/transformed/recyclerview-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.customview:customview:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/f8d543b88beeabb32a68cf3403d8f156/transformed/customview-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.customview:customview:1.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/f8d543b88beeabb32a68cf3403d8f156/transformed/customview-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.autofill:autofill:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/41cce18a4b487000200436c117adc1b5/transformed/autofill-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.autofill:autofill:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/41cce18a4b487000200436c117adc1b5/transformed/autofill-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.graphics:graphics-path:1.0.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/9421250f7388f4b7ac7c2c664212203f/transformed/graphics-path-1.0.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.graphics:graphics-path:1.0.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/9421250f7388f4b7ac7c2c664212203f/transformed/graphics-path-1.0.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/571cc1662826584e3b209b48ed25473b/transformed/customview-poolingcontainer-1.0.0/AndroidManifest.xml:20:5-21:38
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/571cc1662826584e3b209b48ed25473b/transformed/customview-poolingcontainer-1.0.0/AndroidManifest.xml:20:5-21:38
+MERGED from [androidx.core:core-ktx:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b996831d1872a5c4a32c4b20309d9d4e/transformed/core-ktx-1.15.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.core:core-ktx:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/b996831d1872a5c4a32c4b20309d9d4e/transformed/core-ktx-1.15.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d81c0d91f26266b8784f86b35c85c287/transformed/startup-runtime-1.1.1/AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d81c0d91f26266b8784f86b35c85c287/transformed/startup-runtime-1.1.1/AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.tracing:tracing:1.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/892ed836b8367fbcb53ed91a546e34a1/transformed/tracing-1.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.tracing:tracing:1.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/892ed836b8367fbcb53ed91a546e34a1/transformed/tracing-1.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.tracing:tracing-ktx:1.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d64872fe9eb75c96f6a4adda6f975597/transformed/tracing-ktx-1.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.tracing:tracing-ktx:1.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d64872fe9eb75c96f6a4adda6f975597/transformed/tracing-ktx-1.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f628434eed3b88d15e2885711877e2a7/transformed/runtime-saveable-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/f628434eed3b88d15e2885711877e2a7/transformed/runtime-saveable-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/aff864f7ea2919d06a07d197a3c51a7d/transformed/runtime-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/aff864f7ea2919d06a07d197a3c51a7d/transformed/runtime-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/3f09888f68d0c56d84b8c7f6653dcc60/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/3f09888f68d0c56d84b8c7f6653dcc60/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/7ccec8c5ca2248c5f17bc31a7465cbbe/transformed/cursoradapter-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/7ccec8c5ca2248c5f17bc31a7465cbbe/transformed/cursoradapter-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.cardview:cardview:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2479db9c3720c6f95dc3bbfaa8ecef83/transformed/cardview-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.cardview:cardview:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2479db9c3720c6f95dc3bbfaa8ecef83/transformed/cardview-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.interpolator:interpolator:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/22fc9d3ffd6886d1465c55e110c15d2a/transformed/interpolator-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.interpolator:interpolator:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/22fc9d3ffd6886d1465c55e110c15d2a/transformed/interpolator-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/0ae9f28bb143fdea0aa1657b066e7be9/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/0ae9f28bb143fdea0aa1657b066e7be9/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.exifinterface:exifinterface:1.3.2] /Users/gmtange/.gradle/caches/9.5.0/transforms/891f2e4a950d0f37ff7512afe4875132/transformed/exifinterface-1.3.2/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.exifinterface:exifinterface:1.3.2] /Users/gmtange/.gradle/caches/9.5.0/transforms/891f2e4a950d0f37ff7512afe4875132/transformed/exifinterface-1.3.2/AndroidManifest.xml:20:5-22:41
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:19:5-21:41
+MERGED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:19:5-21:41
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:18:5-20:41
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:18:5-20:41
+MERGED from [com.google.android.datatransport:transport-api:2.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/7d50bfdd25c40fc1e001d408e6865694/transformed/transport-api-2.2.1/AndroidManifest.xml:18:5-20:41
+MERGED from [com.google.android.datatransport:transport-api:2.2.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/7d50bfdd25c40fc1e001d408e6865694/transformed/transport-api-2.2.1/AndroidManifest.xml:18:5-20:41
+MERGED from [com.google.firebase:firebase-components:16.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/3f3565b2af15eab7583ca880b5e08bc4/transformed/firebase-components-16.1.0/AndroidManifest.xml:19:5-21:41
+MERGED from [com.google.firebase:firebase-components:16.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/3f3565b2af15eab7583ca880b5e08bc4/transformed/firebase-components-16.1.0/AndroidManifest.xml:19:5-21:41
+MERGED from [com.google.firebase:firebase-encoders-json:17.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d5d40b497f874d61522a77eecdd53616/transformed/firebase-encoders-json-17.1.0/AndroidManifest.xml:19:5-21:41
+MERGED from [com.google.firebase:firebase-encoders-json:17.1.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/d5d40b497f874d61522a77eecdd53616/transformed/firebase-encoders-json-17.1.0/AndroidManifest.xml:19:5-21:41
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/1c1a15c50f92742c32f6a4046ba3457d/transformed/core-runtime-2.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/1c1a15c50f92742c32f6a4046ba3457d/transformed/core-runtime-2.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.documentfile:documentfile:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/4a557e564b25afe8ea4e84544e9bb8a5/transformed/documentfile-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.documentfile:documentfile:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/4a557e564b25afe8ea4e84544e9bb8a5/transformed/documentfile-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2462b394328f38b2031a26e43c5ee592/transformed/localbroadcastmanager-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/2462b394328f38b2031a26e43c5ee592/transformed/localbroadcastmanager-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.print:print:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/c75a61256b32d7a769154721851cc4a7/transformed/print-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.print:print:1.0.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/c75a61256b32d7a769154721851cc4a7/transformed/print-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [com.google.android.odml:image:1.0.0-beta1] /Users/gmtange/.gradle/caches/9.5.0/transforms/3c66c0489d77b4a66d5dcb675230a77c/transformed/image-1.0.0-beta1/AndroidManifest.xml:5:5-44
+MERGED from [com.google.android.odml:image:1.0.0-beta1] /Users/gmtange/.gradle/caches/9.5.0/transforms/3c66c0489d77b4a66d5dcb675230a77c/transformed/image-1.0.0-beta1/AndroidManifest.xml:5:5-44
+	android:targetSdkVersion
+		INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/gmtange/Projects/PSBill/psbill/src/main/AndroidManifest.xml
+service#androidx.camera.core.impl.MetadataHolderService
+ADDED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:29:9-33:78
+MERGED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:24:9-33:19
+MERGED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:24:9-33:19
+	android:enabled
+		ADDED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:31:13-36
+	android:exported
+		ADDED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:32:13-37
+	tools:ignore
+		ADDED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:33:13-75
+	android:name
+		ADDED from [androidx.camera:camera-core:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/90ea9b859d33a7732dca62bbb4d63069/transformed/camera-core-1.4.1/AndroidManifest.xml:30:13-75
+meta-data#androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER
+ADDED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:30:13-32:89
+	android:value
+		ADDED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:32:17-86
+	android:name
+		ADDED from [androidx.camera:camera-camera2:1.4.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/aa616550b1239f6274e876a9221526b6/transformed/camera-camera2-1.4.1/AndroidManifest.xml:31:17-103
+service#com.google.mlkit.common.internal.MlKitComponentDiscoveryService
+ADDED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:9:9-15:19
+MERGED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:9:9-15:19
+MERGED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:9:9-15:19
+MERGED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:15:9-23:19
+MERGED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:15:9-23:19
+	android:exported
+		ADDED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:11:13-37
+	tools:targetApi
+		ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:19:13-32
+	android:directBootAware
+		ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:17:13-43
+	android:name
+		ADDED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:10:13-91
+meta-data#com.google.firebase.components:com.google.mlkit.vision.barcode.internal.BarcodeRegistrar
+ADDED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:12:13-14:85
+	android:value
+		ADDED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:14:17-82
+	android:name
+		ADDED from [com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/e42728a5970dae3d2dea4cbf28b2e097/transformed/play-services-mlkit-barcode-scanning-18.3.1/AndroidManifest.xml:13:17-120
+meta-data#com.google.firebase.components:com.google.mlkit.vision.common.internal.VisionCommonRegistrar
+ADDED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:12:13-14:85
+	android:value
+		ADDED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:14:17-82
+	android:name
+		ADDED from [com.google.mlkit:vision-common:17.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef437721e99b22fe040960beb09a7f8b/transformed/vision-common-17.3.0/AndroidManifest.xml:13:17-124
+provider#com.google.mlkit.common.internal.MlKitInitProvider
+ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:9:9-13:38
+	android:authorities
+		ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:11:13-69
+	android:exported
+		ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:12:13-37
+	android:initOrder
+		ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:13:13-35
+	android:name
+		ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:10:13-78
+meta-data#com.google.firebase.components:com.google.mlkit.common.internal.CommonComponentRegistrar
+ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:20:13-22:85
+	android:value
+		ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:22:17-82
+	android:name
+		ADDED from [com.google.mlkit:common:18.11.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/518b768f0b3e2ad1c0fbc4ca83b9ea5b/transformed/common-18.11.0/AndroidManifest.xml:21:17-120
+activity#com.google.android.gms.common.api.GoogleApiActivity
+ADDED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:5:9-173
+	android:exported
+		ADDED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:5:146-170
+	android:theme
+		ADDED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:5:86-145
+	android:name
+		ADDED from [com.google.android.gms:play-services-base:18.5.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ee88b5ad0626ae39289f0df9d849db2e/transformed/play-services-base-18.5.0/AndroidManifest.xml:5:19-85
+meta-data#com.google.android.gms.version
+ADDED from [com.google.android.gms:play-services-basement:18.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/012b3d470506ee6ec007bbb30de09c8b/transformed/play-services-basement-18.4.0/AndroidManifest.xml:6:9-122
+	android:value
+		ADDED from [com.google.android.gms:play-services-basement:18.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/012b3d470506ee6ec007bbb30de09c8b/transformed/play-services-basement-18.4.0/AndroidManifest.xml:6:66-119
+	android:name
+		ADDED from [com.google.android.gms:play-services-basement:18.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/012b3d470506ee6ec007bbb30de09c8b/transformed/play-services-basement-18.4.0/AndroidManifest.xml:6:20-65
+activity#androidx.compose.ui.tooling.PreviewActivity
+ADDED from [androidx.compose.ui:ui-tooling-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a3bd1bebaea923eb570966cbed78dcbd/transformed/ui-tooling-release/AndroidManifest.xml:23:9-25:39
+	android:exported
+		ADDED from [androidx.compose.ui:ui-tooling-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a3bd1bebaea923eb570966cbed78dcbd/transformed/ui-tooling-release/AndroidManifest.xml:25:13-36
+	android:name
+		ADDED from [androidx.compose.ui:ui-tooling-android:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/a3bd1bebaea923eb570966cbed78dcbd/transformed/ui-tooling-release/AndroidManifest.xml:24:13-71
+activity#androidx.activity.ComponentActivity
+ADDED from [androidx.compose.ui:ui-test-manifest:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d935f92d23a41b4fa0663cbef988365b/transformed/ui-test-manifest-1.7.5/AndroidManifest.xml:23:9-25:39
+	android:exported
+		ADDED from [androidx.compose.ui:ui-test-manifest:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d935f92d23a41b4fa0663cbef988365b/transformed/ui-test-manifest-1.7.5/AndroidManifest.xml:25:13-36
+	android:name
+		ADDED from [androidx.compose.ui:ui-test-manifest:1.7.5] /Users/gmtange/.gradle/caches/9.5.0/transforms/d935f92d23a41b4fa0663cbef988365b/transformed/ui-test-manifest-1.7.5/AndroidManifest.xml:24:13-63
+provider#androidx.startup.InitializationProvider
+ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d81c0d91f26266b8784f86b35c85c287/transformed/startup-runtime-1.1.1/AndroidManifest.xml:26:9-30:34
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/gmtange/.gradle/caches/9.5.0/transforms/d81c0d91f26266b8784f86b35c85c287/transformed/startup-runtime-1.1.1/AndroidManifest.xml:26:9-30:34
+	tools:node
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:28:13-31
+	android:authorities
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:26:13-68
+	android:exported
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:27:13-37
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:25:13-67
+meta-data#androidx.emoji2.text.EmojiCompatInitializer
+ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/ef3b2f04fea0af45a3fcd44ee8b374f9/transformed/emoji2-1.3.0/AndroidManifest.xml:30:17-75
+meta-data#androidx.lifecycle.ProcessLifecycleInitializer
+ADDED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.lifecycle:lifecycle-process:2.8.7] /Users/gmtange/.gradle/caches/9.5.0/transforms/58b3da5d005fe6b3335a1b831d411c01/transformed/lifecycle-process-2.8.7/AndroidManifest.xml:30:17-78
+permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:23:9-81
+permission#com.example.psbill.customer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:23:9-81
+uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:26:22-94
+uses-permission#com.example.psbill.customer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.15.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/11a72ae5a04d9920e5eb7475c0d5fc8d/transformed/core-1.15.0/AndroidManifest.xml:26:22-94
+meta-data#androidx.profileinstaller.ProfileInstallerInitializer
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:30:17-85
+receiver#androidx.profileinstaller.ProfileInstallReceiver
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:34:9-52:20
+	android:enabled
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:37:13-35
+	android:exported
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:38:13-36
+	android:permission
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:39:13-57
+	android:directBootAware
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:36:13-44
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:35:13-76
+intent-filter#action:name:androidx.profileinstaller.action.INSTALL_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:40:13-42:29
+action#androidx.profileinstaller.action.INSTALL_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:17-91
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:41:25-88
+intent-filter#action:name:androidx.profileinstaller.action.SKIP_FILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:43:13-45:29
+action#androidx.profileinstaller.action.SKIP_FILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:17-85
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:44:25-82
+intent-filter#action:name:androidx.profileinstaller.action.SAVE_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:46:13-48:29
+action#androidx.profileinstaller.action.SAVE_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:17-88
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:47:25-85
+intent-filter#action:name:androidx.profileinstaller.action.BENCHMARK_OPERATION
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:49:13-51:29
+action#androidx.profileinstaller.action.BENCHMARK_OPERATION
+ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:17-95
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.4.0] /Users/gmtange/.gradle/caches/9.5.0/transforms/40e1da1f22d651356edf0c1729fc9ccd/transformed/profileinstaller-1.4.0/AndroidManifest.xml:50:25-92
+service#com.google.android.datatransport.runtime.backends.TransportBackendDiscovery
+ADDED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:29:9-35:19
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:36:9-38:40
+MERGED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:36:9-38:40
+	android:exported
+		ADDED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:31:13-37
+	android:name
+		ADDED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:30:13-103
+meta-data#backend:com.google.android.datatransport.cct.CctBackendFactory
+ADDED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:32:13-34:39
+	android:value
+		ADDED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:34:17-36
+	android:name
+		ADDED from [com.google.android.datatransport:transport-backend-cct:2.3.3] /Users/gmtange/.gradle/caches/9.5.0/transforms/d67f58721311e2b144ffc658e4fce97c/transformed/transport-backend-cct-2.3.3/AndroidManifest.xml:33:17-94
+service#com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService
+ADDED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:26:9-30:19
+	android:exported
+		ADDED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:28:13-37
+	android:permission
+		ADDED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:29:13-69
+	android:name
+		ADDED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:27:13-117
+receiver#com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver
+ADDED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:32:9-34:40
+	android:exported
+		ADDED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:34:13-37
+	android:name
+		ADDED from [com.google.android.datatransport:transport-runtime:2.2.6] /Users/gmtange/.gradle/caches/9.5.0/transforms/1f95cd1b78de6778dfafaa55df36fc3a/transformed/transport-runtime-2.2.6/AndroidManifest.xml:33:13-132
