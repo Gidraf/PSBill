@@ -500,6 +500,15 @@ fun PSBillScreensConfigView(
                     }
 
                     HorizontalDivider(color = PSBillThemeColors.Border)
+                    com.example.psbill.customer.QueueWithWifiForm(
+                        deviceId = selectedNode.optString("id"),
+                        gameName = selectedNode.optString("current_game").takeIf { it.isNotBlank() && it != "null" }
+                            ?: games.firstOrNull()?.optString("game_name").orEmpty(),
+                        serverHost = serverHost, token = token, client = client,
+                        onAdded = { loadScreenDetails(selectedNode) },
+                    )
+
+                    HorizontalDivider(color = PSBillThemeColors.Border)
                     Text("Session Report (day filter + pagination)", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     OutlinedTextField(
                         value = sessionsDateFilter,

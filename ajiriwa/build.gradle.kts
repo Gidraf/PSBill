@@ -7,7 +7,7 @@ plugins {
 extra["featureModules.app"] = "ajiriwa"
 extra["featureModules.catalogue"] = listOf(
     "dashboard", "orders", "sms", "wifi", "printing", "arcade",
-    "customers", "catalogue", "properties", "marketing",
+    "customers", "catalogue", "properties", "marketing", "stock",
 )
 // These still live inside MainActivity: excluded builds hide + skip them at runtime.
 extra["featureModules.builtIn"] = listOf("wifi", "arcade")

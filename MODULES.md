@@ -45,7 +45,7 @@ The build prints what it compiled, e.g.
   the catalogue list in the app's `build.gradle.kts` and a line in
   `modules.properties`.
 
-`wifi` and `arcade` in Ajiriwa still live inside `MainActivity`: unticking them
+`stock` (Stock & tanks) is a regular module. `wifi` and `arcade` in Ajiriwa still live inside `MainActivity`: unticking them
 removes them from navigation and stops their background polling, but their code
 is still compiled until it is split out of `MainActivity`.
 

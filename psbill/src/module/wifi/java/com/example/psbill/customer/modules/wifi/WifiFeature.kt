@@ -15,5 +15,6 @@ object WifiFeature : PsbillTab() {
     override val order = 20
 
     @Composable
-    override fun Content(ctx: PsbillTabContext) = PSBillWifiView(ctx.vouchers, onRefresh = ctx.onRefresh)
+    override fun Content(ctx: PsbillTabContext) = PSBillWifiView(ctx.vouchers, onRefresh = ctx.onRefresh,
+        serverHost = ctx.serverHost, token = ctx.token, client = ctx.client)
 }

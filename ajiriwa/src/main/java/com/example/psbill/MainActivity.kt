@@ -583,13 +583,16 @@ class MainActivity : ComponentActivity() {
             })
         }
 
-        val enqueuePlayer = { deviceId: String, gameName: String, playerName: String, playerPhone: String ->
+        val enqueuePlayer = { deviceId: String, gameName: String, playerName: String, playerPhone: String, giveWifi: Boolean, wifiMinutes: Int? ->
             val url = "${apiBaseUrl(serverDomain)}/api/v1/kiosk/queue/tickets"
             val payload = JSONObject().apply {
                 put("device_id", deviceId)
                 put("game_name", gameName)
                 put("player_name", playerName)
                 put("player_phone", playerPhone)
+                put("send_sms", true)                        // ticket + estimated wait by SMS
+                put("give_wifi", giveWifi && playerPhone.isNotBlank())
+                if (wifiMinutes != null && wifiMinutes > 0) put("wifi_minutes", wifiMinutes)
             }
             val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE)
             val request = Request.Builder().url(url).post(body).headers(getHeaders()).build()
@@ -600,7 +603,17 @@ class MainActivity : ComponentActivity() {
                         if (response.code == 401) {
                             handleAuthError()
                         } else if (response.isSuccessful) {
+                            val res = runCatching { JSONObject(response.body?.string().orEmpty()) }.getOrNull()
+                            val msg = buildString {
+                                append("Ticket #${res?.optJSONObject("ticket")?.optInt("ticket_number") ?: "-"}")
+                                res?.optInt("estimated_wait_minutes")?.let { append(" · ~$it min wait") }
+                                res?.optJSONObject("wifi_pass")?.optString("voucher_code")?.takeIf { it.isNotBlank() }?.let { code ->
+                                    append(" · WiFi $code (${res.optJSONObject("wifi_pass")?.optInt("minutes")} min)")
+                                }
+                                if (res?.optBoolean("sms_sent") == true) append(" · SMS sent")
+                            }
                             runOnUiThread {
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 fetchQueueTickets(deviceId)
                             }
                         }
@@ -998,6 +1011,7 @@ class MainActivity : ComponentActivity() {
                                 if (canViewPricing) add("pricing" to "Pricing")
                                 if (canViewReports) add("reports" to "Reports")
                                 add("activity" to "Activity")
+                                if (com.example.psbill.core.CompiledModules.has("wifi")) add("wifipass" to "WiFi passes")
                             }
                             Column(Modifier.fillMaxSize()) {
                                 LazyRow(
@@ -1045,6 +1059,7 @@ class MainActivity : ComponentActivity() {
                                         "pricing" -> PricingTab(serverDomain, getHeaders)
                                         "reports" -> ReportsTab(dailyReportSummary.value, serverDomain, getHeaders, authToken)
                                         "activity" -> ActivityTab(systemLogs)
+                                        "wifipass" -> com.example.psbill.ui.WifiPassPanel(serverDomain, getHeaders)
                                     }
                                 }
                             }
@@ -1098,8 +1113,8 @@ class MainActivity : ComponentActivity() {
                             isLoadingQueue = isLoadingQueue,
                             gamesList = games,
                             onDismiss = { inspectingDeviceForQueue = null },
-                            onAddPlayer = { gameName, playerName, playerPhone ->
-                                enqueuePlayer(inspectingDeviceForQueue!!.optString("id"), gameName, playerName, playerPhone)
+                            onAddPlayer = { gameName, playerName, playerPhone, giveWifi, wifiMinutes ->
+                                enqueuePlayer(inspectingDeviceForQueue!!.optString("id"), gameName, playerName, playerPhone, giveWifi, wifiMinutes)
                             },
                             onCallNext = { ticketId ->
                                 updateTicketStatus(ticketId, inspectingDeviceForQueue!!.optString("id"), "CALLED")
@@ -3197,7 +3212,7 @@ class MainActivity : ComponentActivity() {
         isLoadingQueue: Boolean,
         gamesList: List<JSONObject>,
         onDismiss: () -> Unit,
-        onAddPlayer: (String, String, String) -> Unit, // gameName, playerName, playerPhone
+        onAddPlayer: (String, String, String, Boolean, Int?) -> Unit, // gameName, playerName, playerPhone, giveWifi, wifiMinutes
         onCallNext: (String) -> Unit, // ticketId
         onServe: (JSONObject) -> Unit, // ticket JSON
         onSkip: (String) -> Unit, // ticketId
@@ -3207,6 +3222,8 @@ class MainActivity : ComponentActivity() {
     ) {
         var newPlayerName by remember { mutableStateOf("") }
         var newPlayerPhone by remember { mutableStateOf("") }
+        var giveWifi by remember { mutableStateOf(true) }
+        var wifiMinutes by remember { mutableStateOf("") }   // blank = estimated waiting time
         var selectedGame by remember { mutableStateOf(if (gamesList.isNotEmpty()) gamesList[0].optString("game_name", "") else "") }
 
         AlertDialog(
@@ -3329,7 +3346,7 @@ class MainActivity : ComponentActivity() {
                             OutlinedTextField(
                                 value = newPlayerPhone,
                                 onValueChange = { newPlayerPhone = it },
-                                label = { Text("Phone Number (Optional)", color = Color.Gray, fontSize = 11.sp) },
+                                label = { Text("Phone (ticket & WiFi code by SMS)", color = Color.Gray, fontSize = 11.sp) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -3362,12 +3379,32 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Switch(checked = giveWifi, onCheckedChange = { giveWifi = it })
+                                Spacer(Modifier.width(8.dp))
+                                Text("Free WiFi while waiting", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                OutlinedTextField(
+                                    value = wifiMinutes,
+                                    onValueChange = { v -> wifiMinutes = v.filter { it.isDigit() }.take(3) },
+                                    enabled = giveWifi,
+                                    placeholder = { Text("auto", color = Color.Gray, fontSize = 11.sp) },
+                                    label = { Text("min", color = Color.Gray, fontSize = 10.sp) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.width(84.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                                )
+                            }
+                            if (giveWifi && newPlayerPhone.isBlank()) {
+                                Text("Add a phone number to SMS the WiFi code.", color = Color(0xFFFFB74D), fontSize = 10.sp)
+                            }
+
                             Spacer(modifier = Modifier.height(4.dp))
 
                             Button(
                                 onClick = {
                                     if (newPlayerName.trim().isNotEmpty() && selectedGame.isNotEmpty()) {
-                                        onAddPlayer(selectedGame, newPlayerName.trim(), newPlayerPhone.trim())
+                                        onAddPlayer(selectedGame, newPlayerName.trim(), newPlayerPhone.trim(), giveWifi, wifiMinutes.toIntOrNull())
                                         newPlayerName = ""
                                         newPlayerPhone = ""
                                     }

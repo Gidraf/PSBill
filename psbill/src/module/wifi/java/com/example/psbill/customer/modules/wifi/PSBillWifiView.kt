@@ -57,6 +57,7 @@ import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.delay
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -64,7 +65,13 @@ import java.io.IOException
 import java.util.Locale
 
 @Composable
-fun PSBillWifiView(vouchers: List<JSONObject>, onRefresh: () -> Unit) {
+fun PSBillWifiView(
+    vouchers: List<JSONObject>,
+    onRefresh: () -> Unit,
+    serverHost: String = "",
+    token: String = "",
+    client: OkHttpClient? = null,
+) {
     val context = LocalContext.current
     var voucherPin by remember { mutableStateOf("") }
 
@@ -76,6 +83,11 @@ fun PSBillWifiView(vouchers: List<JSONObject>, onRefresh: () -> Unit) {
     }
 
     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (client != null && serverHost.isNotBlank()) item {
+            PSBillCard(title = "WiFi while waiting / after a game") {
+                com.example.psbill.customer.WifiPassForm(serverHost = serverHost, token = token, client = client)
+            }
+        }
         item {
             PSBillCard(title = "📶 Baseya Wi-Fi Voucher Portal") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
