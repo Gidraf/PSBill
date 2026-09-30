@@ -10,6 +10,11 @@
 # and starts the builder agent. Nothing to type, no passwords on this machine.
 set -euo pipefail
 
+# Everything runs inside main(), called on the last line, so the whole script is read
+# before anything runs (safe with `curl ... | bash`).
+main() {
+
+
 BASE=/opt/psbill-build
 REPO_URL=${REPO_URL:-https://github.com/Gidraf/PSBill.git}
 BRANCH=${BRANCH:-main}
@@ -41,21 +46,21 @@ say "CVPAP: $CVPAP_DIR"
 mkdir -p "$BASE/state" && chmod 700 "$BASE"
 if [ ! -d "$REPO_DIR/.git" ]; then
   say "cloning $REPO_URL"
-  git clone --quiet --branch "$BRANCH" "$REPO_URL" "$REPO_DIR"
+  git clone --quiet --branch "$BRANCH" "$REPO_URL" "$REPO_DIR" </dev/null
 else
   git -C "$REPO_DIR" fetch --quiet origin "$BRANCH" && git -C "$REPO_DIR" reset --quiet --hard "origin/$BRANCH"
 fi
 
 # ── secrets live in CVPAP (encrypted); fetch only the builder token ──
 say "creating / reading the signing key and builder token inside CVPAP"
-OUT=$(cd "$CVPAP_DIR" && docker compose exec -T web python manage.py app_builder_setup --print-token 2>&1 || true)
+OUT=$(cd "$CVPAP_DIR" && docker compose exec -T web python manage.py app_builder_setup --print-token 2>&1 </dev/null || true)
 TOKEN=$(printf '%s\n' "$OUT" | grep -E '^bld_' | tail -1 || true)
 if [ -z "$TOKEN" ]; then
   printf '%s\n' "$OUT" | tail -15 >&2
   die "could not get the builder token (output above). Is the latest CVPAP running? (cd $CVPAP_DIR && git pull && docker compose up -d --build web)"
 fi
 
-code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Builder-Token: $TOKEN" -H 'Content-Type: application/json' \
+code=$(curl -s </dev/null -o /dev/null -w '%{http_code}' -X POST -H "X-Builder-Token: $TOKEN" -H 'Content-Type: application/json' \
   -d '{"name":"setup-check"}' "$CVPAP_URL/api/v1/app-builds/worker/heartbeat")
 [ "$code" = 200 ] || die "CVPAP at $CVPAP_URL answered $code — is the new version deployed and CVPAP_URL right?"
 
@@ -75,7 +80,7 @@ ENV
 umask 022
 
 say "building the Android build image (first time takes a few minutes)"
-docker build -q -t psbill-android-builder "$REPO_DIR/tools/server-build" >/dev/null
+docker build -q -t psbill-android-builder "$REPO_DIR/tools/server-build" >/dev/null </dev/null
 
 say "installing the builder service"
 cat > /etc/systemd/system/psbill-builder.service <<UNIT
@@ -100,3 +105,6 @@ systemctl restart psbill-builder.service
 
 say "done. Admin dashboard → App builds shows the builder online; logs: journalctl -u psbill-builder -f"
 say "Recovery copy of the signing key: admin → App builds → Download recovery file (keep it offline)."
+}
+
+main "$@"
