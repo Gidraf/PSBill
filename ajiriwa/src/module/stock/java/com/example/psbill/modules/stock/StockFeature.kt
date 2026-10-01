@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -131,6 +133,67 @@ object StockFeature : FeatureModule() {
         }
     }
 
+    /**
+     * Reading entry that looks like a water meter: black wheels (whole m³) and red
+     * wheels (100 L / 10 L / 1 L). Starts at the last reading — roll the wheels that moved.
+     */
+    @Composable
+    private fun MeterFace(last: Double?, red: Int, unit: String, onChange: (String) -> Unit) {
+        val black = maxOf(5, (last ?: 0.0).toLong().toString().length)
+        val start = remember(last, red) {
+            val scaled = Math.round((last ?: 0.0) * Math.pow(10.0, red.toDouble()))
+            scaled.toString().padStart(black + red, '0').takeLast(black + red).map { it - '0' }
+        }
+        var digits by remember(last, red) { mutableStateOf(start) }
+        LaunchedEffect(digits) {
+            val s = digits.joinToString("")
+            val whole = s.take(black).toLong().toString()
+            val reading = if (red > 0) "$whole.${s.drop(black)}" else whole
+            onChange(if (digits == start) "" else reading)
+        }
+        fun bump(i: Int, by: Int) { digits = digits.mapIndexed { j, d -> if (j == i) ((d + by) % 10 + 10) % 10 else d } }
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(36.dp))
+                .background(Brush.radialGradient(listOf(Color(0xFF60A5FA), Color(0xFF1E3A8A))))
+                .padding(10.dp),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp)).background(Color(0xFFF8FAFC)).padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(if (unit == "m3") "m³" else unit.uppercase(), color = Color(0xFF334155), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Row(
+                    Modifier.padding(top = 4.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFFCBD5E1))
+                        .horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    digits.forEachIndexed { i, d ->
+                        val isRed = i >= black
+                        if (i == black && red > 0) Text(".", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 1.dp)) {
+                            Text("▲", color = Color(0xFF475569), fontSize = 14.sp, modifier = Modifier.clickable { bump(i, 1) }.padding(4.dp))
+                            Box(
+                                Modifier.width(30.dp).height(42.dp).clip(RoundedCornerShape(4.dp))
+                                    .background(
+                                        Brush.verticalGradient(
+                                            if (isRed) listOf(Color(0xFF7F1D1D), Color(0xFFDC2626), Color(0xFF7F1D1D))
+                                            else listOf(Color.Black, Color(0xFF262626), Color.Black)
+                                        )
+                                    )
+                                    .clickable { bump(i, 1) },
+                                contentAlignment = Alignment.Center,
+                            ) { Text("$d", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace) }
+                            Text("▼", color = Color(0xFF475569), fontSize = 14.sp, modifier = Modifier.clickable { bump(i, -1) }.padding(4.dp))
+                            Text(if (isRed && unit == "m3") listOf("100L", "10L", "1L", "0.1L").getOrElse(i - black) { "" } else "",
+                                fontSize = 8.sp, color = AjiriwaColors.Danger)
+                        }
+                    }
+                }
+                Text("Tap ▲ ▼ to match the meter", color = Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+    }
+
     @Composable
     private fun LevelCard(item: JSONObject, onAction: (String) -> Unit) {
         val unit = item.optString("unit")
@@ -216,22 +279,9 @@ object StockFeature : FeatureModule() {
                         "METER" -> {
                             val mu = item.optString("meter_unit").takeIf { it != "null" } ?: ""
                             val decimals = item.optInt("meter_decimals", -1).takeIf { !item.isNull("meter_decimals") && it >= 0 }
-                            if (decimals != null) {
-                                // like the meter face: black digits (whole $mu) + red digit(s)
-                                var whole by remember { mutableStateOf("") }
-                                var reds by remember { mutableStateOf("") }
-                                fun sync() { amount = if (whole.isBlank()) "" else if (decimals == 0) whole else "$whole.${reds.padEnd(decimals, '0')}" }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    OutlinedTextField(whole, { whole = it.filter(Char::isDigit); sync() }, label = { Text("Black digits ($mu)") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.weight(1f))
-                                    if (decimals > 0) {
-                                        Text(".", fontSize = 22.sp, color = AjiriwaColors.TextPrimary)
-                                        OutlinedTextField(reds, { reds = it.filter(Char::isDigit).take(decimals); sync() },
-                                            label = { Text(if (mu == "m3") listOf("100 L", "10 L", "1 L", "0.1 L").take(decimals).joinToString("|") else "red") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.width(110.dp),
-                                            textStyle = LocalTextStyle.current.copy(color = AjiriwaColors.Danger, fontWeight = FontWeight.Bold))
-                                    }
-                                }
+                            val faceDecimals = decimals ?: if (mu == "m3") 1 else null
+                            if (faceDecimals != null) {
+                                MeterFace(item.optDouble("last_meter_reading").takeIf { !it.isNaN() }, faceDecimals, mu) { amount = it }
                                 val step = item.optDouble("meter_step")
                                 if (!step.isNaN()) Text("Each red step = ${fmt(step)} $unit", fontSize = 11.sp, color = AjiriwaColors.TextMuted)
                             } else {
