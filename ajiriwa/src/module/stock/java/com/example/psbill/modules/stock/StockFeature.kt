@@ -71,6 +71,7 @@ object StockFeature : FeatureModule() {
             return call(Request.Builder().url("$base/reports/flow?from=${fmt.format(cal.time)}&to=$to"))
         }
         suspend fun post(path: String, body: JSONObject) = call(Request.Builder().url("$base$path").post(body.toString().toRequestBody(json)))
+        suspend fun put(path: String, body: JSONObject) = call(Request.Builder().url("$base$path").put(body.toString().toRequestBody(json)))
     }
 
     @Composable
@@ -137,16 +138,39 @@ object StockFeature : FeatureModule() {
         val flags = item.optJSONArray("flags")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AjiriwaColors.Surface).padding(14.dp)) {
             Text(item.optString("name"), color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            if (item.optBoolean("meter_enabled")) Text("Meter ${item.optString("meter_number")} · last ${fmt(item.optDouble("last_meter_reading", 0.0))}", color = AjiriwaColors.TextMuted, fontSize = 11.sp)
+            if (item.optBoolean("meter_enabled")) Text(
+                "Meter ${item.optString("meter_number")} · last ${fmt(item.optDouble("last_meter_reading", 0.0))} ${item.optString("meter_unit").takeIf { it != "null" } ?: ""}" +
+                    (item.optString("last_meter_at").takeIf { it.length >= 16 }?.let { " · ${it.take(16).replace('T', ' ')}" } ?: ""),
+                color = AjiriwaColors.TextMuted, fontSize = 11.sp,
+            )
             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Gauge(item.optString("storage_label"), item.optDouble("storage_qty", 0.0), item.optDouble("storage_pct").takeIf { !it.isNaN() }, unit, Color(0xFF64748B), Modifier.weight(1f))
                 Text("→", color = AjiriwaColors.TextMuted, fontSize = 22.sp)
                 Gauge(item.optString("ready_label"), item.optDouble("ready_qty", 0.0), item.optDouble("ready_pct").takeIf { !it.isNaN() }, unit,
                     if (bulk) Color(0xFF0EA5E9) else Color(0xFF22C55E), Modifier.weight(1f))
             }
-            flags.forEach { f ->
+            if ("METER_READING_NEEDED" in flags) {
+                val awaiting = item.optDouble("awaiting_meter_qty", 0.0)
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AjiriwaColors.Warning.copy(alpha = 0.15f))
+                        .clickable { onAction("METER") }.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (awaiting > 0) "${fmt(awaiting)} $unit sold beyond the last meter reading — tap to enter the new reading"
+                        else "Meter reading due — tap to enter it",
+                        color = AjiriwaColors.Warning, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            flags.filter { it != "METER_READING_NEEDED" }.forEach { f ->
                 Text(
-                    when (f) { "COUNT_NEEDED" -> "Count needed — sold more than recorded"; "REORDER" -> "Reorder — storage low"; else -> "Low ready stock" },
+                    when (f) {
+                        "COUNT_NEEDED" -> "Count needed — sold more than recorded (use Edit levels)"
+                        "REORDER" -> "Reorder — storage low"
+                        "SENSOR_MISMATCH" -> "A sensor reads differently from the books — check and count"
+                        else -> "Low ready stock"
+                    },
                     color = AjiriwaColors.Warning, fontSize = 12.sp,
                 )
             }
@@ -157,6 +181,7 @@ object StockFeature : FeatureModule() {
                 AssistChip(onClick = { onAction("SALE") }, label = { Text("Sale") })
                 AssistChip(onClick = { onAction("WASTE") }, label = { Text("Loss / spoiled") })
                 if (bulk) AssistChip(onClick = { onAction("BACKWASH") }, label = { Text("Backwash") })
+                AssistChip(onClick = { onAction("EDIT") }, label = { Text("Edit levels") })
                 AssistChip(onClick = { onAction("STOCK_TAKE") }, label = { Text("Stock take") })
             }
         }
@@ -167,15 +192,18 @@ object StockFeature : FeatureModule() {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val unit = item.optString("unit")
-        var amount by remember { mutableStateOf("") }
-        var amount2 by remember { mutableStateOf("") }
+        fun v(k: String) = item.optDouble(k).takeIf { !it.isNaN() }?.let { fmt(it).replace(",", "") } ?: ""
+        var amount by remember { mutableStateOf(if (action == "EDIT") v("storage_qty") else "") }
+        var amount2 by remember { mutableStateOf(if (action == "EDIT") v("ready_qty") else "") }
+        var cap1 by remember { mutableStateOf(v("storage_capacity")) }
+        var cap2 by remember { mutableStateOf(v("ready_capacity")) }
         var note by remember { mutableStateOf("") }
         var reason by remember { mutableStateOf(if (item.optString("kind") == "BULK") "LEAK" else "SPOILED") }
         var bucket by remember { mutableStateOf(if (action in listOf("RESTOCK", "BACKWASH")) "storage" else "ready") }
         var saving by remember { mutableStateOf(false) }
         val title = when (action) {
             "RESTOCK" -> "Restock"; "METER" -> "Meter reading"; "TRANSFER" -> item.optString("transfer_label")
-            "SALE" -> "Sale"; "WASTE" -> "Loss / spoiled"; "BACKWASH" -> "Backwash"; else -> "Stock take"
+            "SALE" -> "Sale"; "WASTE" -> "Loss / spoiled"; "BACKWASH" -> "Backwash"; "EDIT" -> "Edit levels"; else -> "Stock take"
         }
         val num = KeyboardOptions(keyboardType = KeyboardType.Decimal)
         AlertDialog(
@@ -186,9 +214,57 @@ object StockFeature : FeatureModule() {
                     Text("${item.optString("storage_label")}: ${fmt(item.optDouble("storage_qty"))} $unit · ${item.optString("ready_label")}: ${fmt(item.optDouble("ready_qty"))} $unit", fontSize = 12.sp)
                     when (action) {
                         "METER" -> {
-                            OutlinedTextField(amount, { amount = it }, label = { Text("Meter now shows") }, keyboardOptions = num, singleLine = true)
+                            val mu = item.optString("meter_unit").takeIf { it != "null" } ?: ""
+                            val decimals = item.optInt("meter_decimals", -1).takeIf { !item.isNull("meter_decimals") && it >= 0 }
+                            if (decimals != null) {
+                                // like the meter face: black digits (whole $mu) + red digit(s)
+                                var whole by remember { mutableStateOf("") }
+                                var reds by remember { mutableStateOf("") }
+                                fun sync() { amount = if (whole.isBlank()) "" else if (decimals == 0) whole else "$whole.${reds.padEnd(decimals, '0')}" }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    OutlinedTextField(whole, { whole = it.filter(Char::isDigit); sync() }, label = { Text("Black digits ($mu)") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.weight(1f))
+                                    if (decimals > 0) {
+                                        Text(".", fontSize = 22.sp, color = AjiriwaColors.TextPrimary)
+                                        OutlinedTextField(reds, { reds = it.filter(Char::isDigit).take(decimals); sync() },
+                                            label = { Text(if (mu == "m3") listOf("100 L", "10 L", "1 L", "0.1 L").take(decimals).joinToString("|") else "red") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.width(110.dp),
+                                            textStyle = LocalTextStyle.current.copy(color = AjiriwaColors.Danger, fontWeight = FontWeight.Bold))
+                                    }
+                                }
+                                val step = item.optDouble("meter_step")
+                                if (!step.isNaN()) Text("Each red step = ${fmt(step)} $unit", fontSize = 11.sp, color = AjiriwaColors.TextMuted)
+                            } else {
+                                OutlinedTextField(amount, { amount = it }, label = { Text("Meter now shows ($mu)") }, keyboardOptions = num, singleLine = true)
+                            }
                             val last = item.optDouble("last_meter_reading")
-                            amount.toDoubleOrNull()?.let { r -> if (!last.isNaN() && r > last) Text("${fmt((r - last) * item.optDouble("meter_factor", 1.0))} $unit will move to ${item.optString("ready_label")}", fontSize = 12.sp) }
+                            val awaiting = item.optDouble("awaiting_meter_qty", 0.0)
+                            if (!last.isNaN()) Text("Last reading ${fmt(last)} $mu", fontSize = 12.sp, color = AjiriwaColors.TextMuted)
+                            if (awaiting > 0) Text("${fmt(awaiting)} $unit was sold beyond the last reading — this reading settles it.", fontSize = 12.sp, color = AjiriwaColors.Warning)
+                            amount.toDoubleOrNull()?.let { r ->
+                                if (!last.isNaN()) {
+                                    var d = r - last
+                                    val roll = item.optDouble("meter_rollover")
+                                    if (d < 0 && !roll.isNaN() && roll > 0) d = roll - last + r
+                                    val pumped = d * item.optDouble("meter_factor", 1.0)
+                                    Text(
+                                        when {
+                                            d <= 0 -> "The reading must be higher than the last one"
+                                            awaiting <= 0 -> "${fmt(pumped)} $unit pumped → ${item.optString("ready_label")}"
+                                            pumped >= awaiting -> "${fmt(pumped)} $unit pumped: ${fmt(awaiting)} $unit settles sales, ${fmt(pumped - awaiting)} $unit added"
+                                            else -> "${fmt(pumped)} $unit pumped — ${fmt(awaiting - pumped)} $unit less than was sold; you'll be asked to count"
+                                        },
+                                        fontSize = 12.sp, color = if (d > 0) AjiriwaColors.TextPrimary else AjiriwaColors.Danger,
+                                    )
+                                }
+                            }
+                        }
+                        "EDIT" -> {
+                            Text("Set the levels as they are now — the change is kept in the history.", fontSize = 12.sp, color = AjiriwaColors.TextMuted)
+                            OutlinedTextField(amount, { amount = it }, label = { Text("${item.optString("storage_label")} ($unit)") }, keyboardOptions = num, singleLine = true)
+                            OutlinedTextField(cap1, { cap1 = it }, label = { Text("${item.optString("storage_label")} capacity") }, keyboardOptions = num, singleLine = true)
+                            OutlinedTextField(amount2, { amount2 = it }, label = { Text("${item.optString("ready_label")} ($unit)") }, keyboardOptions = num, singleLine = true)
+                            OutlinedTextField(cap2, { cap2 = it }, label = { Text("${item.optString("ready_label")} capacity") }, keyboardOptions = num, singleLine = true)
                         }
                         "STOCK_TAKE" -> {
                             OutlinedTextField(amount, { amount = it }, label = { Text("${item.optString("storage_label")} counted") }, keyboardOptions = num, singleLine = true)
@@ -209,13 +285,19 @@ object StockFeature : FeatureModule() {
                 }
             },
             confirmButton = {
-                TextButton(enabled = !saving && (amount.isNotBlank() || (action == "STOCK_TAKE" && amount2.isNotBlank())), onClick = {
+                TextButton(enabled = !saving && (amount.isNotBlank() || (action in listOf("STOCK_TAKE", "EDIT") && amount2.isNotBlank())), onClick = {
                     saving = true
                     scope.launch {
                         val id = item.getString("id")
                         runCatching {
                             when (action) {
-                                "METER" -> api.post("/items/$id/meter", JSONObject().put("reading", amount.toDouble()).put("note", note))
+                                "METER" -> api.post("/items/$id/meter", JSONObject().put("reading", amount.toDouble()).put("note", note)
+                                    .put("client_ref", "app:${UUID.randomUUID()}"))
+                                "EDIT" -> api.put("/items/$id/levels", JSONObject().apply {
+                                    amount.toDoubleOrNull()?.let { put("storage", it) }; amount2.toDoubleOrNull()?.let { put("ready", it) }
+                                    put("storage_capacity", cap1.toDoubleOrNull() ?: JSONObject.NULL); put("ready_capacity", cap2.toDoubleOrNull() ?: JSONObject.NULL)
+                                    put("note", note)
+                                })
                                 "STOCK_TAKE" -> api.post("/items/$id/stock-take", JSONObject().apply {
                                     amount.toDoubleOrNull()?.let { put("storage", it) }; amount2.toDoubleOrNull()?.let { put("ready", it) }; put("note", note)
                                 })
@@ -224,7 +306,10 @@ object StockFeature : FeatureModule() {
                                     put("note", note); put("client_ref", "app:${UUID.randomUUID()}")
                                 })
                             }
-                        }.onSuccess { onDone() }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                        }.onSuccess { r ->
+                            r.optString("message").takeIf { it.isNotBlank() && it != "null" }?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+                            onDone()
+                        }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
                         saving = false
                     }
                 }) { Text(if (saving) "Saving…" else "Save") }
@@ -265,7 +350,7 @@ object StockFeature : FeatureModule() {
 
     private fun typeLabel(t: String) = when (t) {
         "RESTOCK" -> "Restock"; "TRANSFER" -> "Processed / moved"; "SALE" -> "Sale"; "WASTE" -> "Loss"
-        "BACKWASH" -> "Backwash"; "ADJUSTMENT" -> "Stock take"; "VOID" -> "Reversal"; else -> t
+        "BACKWASH" -> "Backwash"; "ADJUSTMENT" -> "Adjustment"; "RETURN" -> "Returned"; "VOID" -> "Reversal"; else -> t
     }
 
     @Composable
