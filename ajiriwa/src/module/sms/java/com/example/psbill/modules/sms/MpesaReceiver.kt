@@ -14,7 +14,7 @@ import java.util.regex.Pattern
 
 class MpesaReceiver : BroadcastReceiver() {
     private val TAG = "MpesaReceiver"
-    private val client = OkHttpClient()
+    private val client = com.example.psbill.core.ActivityLog.client
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     override fun onReceive(context: Context, intent: Intent) {

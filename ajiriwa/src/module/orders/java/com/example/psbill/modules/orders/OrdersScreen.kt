@@ -61,7 +61,7 @@ private const val TAG = "OrdersScreen"
 @Composable
 fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val client = remember { OkHttpClient() }
+    val client = remember { com.example.psbill.core.ActivityLog.client }
     val base = remember(server) { "https://${server.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')}" }
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -72,6 +72,8 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
     var page by remember { mutableIntStateOf(1) }
     val perPage = 20
     var statusFilter by remember { mutableStateOf("") } // "" = ALL
+    var search by remember { mutableStateOf("") }
+    var dateRange by remember { mutableStateOf("") } // "", today, week, month
 
     // ── Load Orders ───────────────────────────────────────────────────────────
     fun load(pg: Int = page, status: String = statusFilter) {
@@ -79,6 +81,10 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
         val url = buildString {
             append("$base/api/v1/shop/orders?page=$pg&per_page=$perPage&tz=Africa/Nairobi")
             if (status.isNotBlank()) append("&status=$status")
+            dateRangeStart(dateRange)?.let { append("&start_date=$it") }
+            val q = search.trim()
+            if (q.length >= 6 && q.none { it.isWhitespace() } && q.any { it.isDigit() } && q.any { it.isLetter() }) append("&order_id=${java.net.URLEncoder.encode(q, "UTF-8")}")
+            else if (q.isNotBlank()) append("&name=${java.net.URLEncoder.encode(q, "UTF-8")}")
         }
         client.newCall(Request.Builder().url(url).headers(headers()).build()).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -105,6 +111,7 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
     var stkOrder by remember { mutableStateOf<JSONObject?>(null) }         // STK push modal
     var stkPhone by remember { mutableStateOf("") }
     var showCreateOrderScreen by remember { mutableStateOf(false) }
+    var manageOrder by remember { mutableStateOf<JSONObject?>(null) }
 
     if (showCreateOrderScreen) {
         CreateOrderScreen(
@@ -122,7 +129,8 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
     val statusChips = listOf("" to "ALL", "PENDING" to "Pending", "PROCESSING" to "Processing",
                              "DELIVERED" to "Delivered", "CANCELLED" to "Cancelled")
 
-    LaunchedEffect(page, statusFilter) { load() }
+    LaunchedEffect(page, statusFilter, dateRange) { load() }
+    LaunchedEffect(search) { kotlinx.coroutines.delay(500); page = 1; load(1) }
 
     // Auto-poll every 20 seconds (same as web)
     LaunchedEffect(page, statusFilter) {
@@ -182,10 +190,18 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
             .headers(headers())
             .build()
         client.newCall(req).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {}
+            override fun onFailure(call: Call, e: IOException) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    Toast.makeText(context, "No connection: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
             override fun onResponse(call: Call, response: Response) {
+                val text = response.body?.string().orEmpty()
+                val ok = response.isSuccessful
+                val code = response.code
                 response.close()
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    if (!ok) Toast.makeText(context, orderErrorText(text, code), Toast.LENGTH_LONG).show()
                     selectedOrder = null
                     load()
                 }
@@ -231,7 +247,7 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
             containerColor = AjiriwaColors.Surface,
             title = { Text("Request M-Pesa Payment", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     val amount = order.optString("amount").ifBlank { order.optString("total_amount", "—") }
                     Text("Order #${orderId.takeLast(6).uppercase()} • KSh $amount", color = AjiriwaColors.TextSecondary, fontSize = 13.sp)
                     Text("An M-Pesa STK Push will be sent to the customer's phone.", color = AjiriwaColors.TextSecondary, fontSize = 12.sp)
@@ -512,6 +528,16 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
                             modifier = Modifier.weight(1f)
                         ) { Text("📱 SMS Receipt", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { manageOrder = order; selectedOrder = null },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Edit · Pay · Reschedule", fontSize = 11.sp) }
+                        OutlinedButton(
+                            onClick = { stkOrder = order; selectedOrder = null },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("M-Pesa request", fontSize = 11.sp) }
+                    }
                 }
             },
             confirmButton = {
@@ -520,6 +546,10 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
                 }
             }
         )
+    }
+
+    manageOrder?.let { o ->
+        OrderManageDialog(base, headers, o, onClose = { manageOrder = null }, onChanged = { load() })
     }
 
     // ── Main UI ───────────────────────────────────────────────────────────────
@@ -567,6 +597,17 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                     )
                 }
+            }
+        }
+
+        OutlinedTextField(
+            value = search, onValueChange = { search = it }, singleLine = true,
+            label = { Text("Search customer name or order id") },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+        LazyRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(listOf("" to "Any date", "today" to "Today", "week" to "7 days", "month" to "30 days")) { (v, label) ->
+                FilterChip(selected = dateRange == v, onClick = { dateRange = v; page = 1 }, label = { Text(label, fontSize = 12.sp) })
             }
         }
 
@@ -715,3 +756,9 @@ fun fetchDeviceMpesaSms(context: Context, orderAmount: String, customerPhone: St
     return list
 }
 
+/** Local start date (YYYY-MM-DD) for the quick date filters. */
+private fun dateRangeStart(range: String): String? {
+    val days = when (range) { "today" -> 0; "week" -> 6; "month" -> 29; else -> return null }
+    val c = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, -days) }
+    return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(c.time)
+}

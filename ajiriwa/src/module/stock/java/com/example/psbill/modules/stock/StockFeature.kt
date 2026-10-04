@@ -1,5 +1,6 @@
 package com.example.psbill.modules.stock
 
+import androidx.compose.foundation.verticalScroll
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,7 +52,7 @@ object StockFeature : FeatureModule() {
     override val slug = "stock"
     override val nav = NavModule("stock", "Stock & Tanks", Icons.AutoMirrored.Filled.List, listOf("inventory"), order = 15)
 
-    private val http by lazy { OkHttpClient() }
+    private val http by lazy { com.example.psbill.core.ActivityLog.client }
 
     private class Api(val ctx: ModuleContext) {
         private val base get() = "${ctx.baseUrl}/api/v1/stock/${ctx.partnerId}"
@@ -64,6 +65,8 @@ object StockFeature : FeatureModule() {
             }
         }
         suspend fun items() = call(Request.Builder().url("$base/items"))
+        /** Businesses under this account (Water, Cyber, Stationery…). */
+        suspend fun units() = call(Request.Builder().url("${ctx.baseUrl}/api/v1/business-units/${ctx.partnerId}"))
         suspend fun movements() = call(Request.Builder().url("$base/movements?limit=40"))
         suspend fun flow(days: Int): JSONObject {
             val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
@@ -84,7 +87,14 @@ object StockFeature : FeatureModule() {
         var reload by remember { mutableIntStateOf(0) }
         var error by remember { mutableStateOf<String?>(null) }
         var action by remember { mutableStateOf<Pair<JSONObject, String>?>(null) }
+        var units by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+        var unit by remember { mutableStateOf("") } // "" all, "-" not assigned
 
+        LaunchedEffect(Unit) {
+            runCatching { api.units() }.onSuccess { r ->
+                units = r.optJSONArray("items").let { a -> if (a == null) emptyList() else (0 until a.length()).map { a.getJSONObject(it) } }
+            }
+        }
         LaunchedEffect(reload) {
             runCatching { api.items() }.onSuccess { r ->
                 items = r.optJSONArray("items").let { a -> if (a == null) emptyList() else (0 until a.length()).map { a.getJSONObject(it) } }
@@ -99,10 +109,23 @@ object StockFeature : FeatureModule() {
             error?.let { Text(it, color = AjiriwaColors.Danger, modifier = Modifier.padding(16.dp)) }
             when (tab) {
                 0 -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (items.isEmpty() && error == null) item {
-                        Text("No stock items yet — add them on the web dashboard (Inventory → Levels & flow).", color = AjiriwaColors.TextSecondary)
+                    if (units.isNotEmpty()) item {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = unit == "", onClick = { unit = "" }, label = { Text("All") })
+                            units.forEach { u ->
+                                FilterChip(selected = unit == u.optString("id"), onClick = { unit = u.optString("id") }, label = { Text(u.optString("name")) })
+                            }
+                            FilterChip(selected = unit == "-", onClick = { unit = "-" }, label = { Text("Not assigned") })
+                        }
                     }
-                    items(items, key = { it.getString("id") }) { item -> LevelCard(item) { a -> action = item to a } }
+                    val shown = items.filter { i ->
+                        val u = i.optString("business_unit_id").takeIf { it.isNotBlank() && it != "null" }
+                        when (unit) { "" -> true; "-" -> u == null; else -> u == unit }
+                    }
+                    if (shown.isEmpty() && error == null) item {
+                        Text("No stock items here yet — add them on the web dashboard (Inventory → Levels & flow).", color = AjiriwaColors.TextSecondary)
+                    }
+                    items(shown, key = { it.getString("id") }) { item -> LevelCard(item) { a -> action = item to a } }
                 }
                 1 -> Activity(api, reload) { reload++ }
                 2 -> Report(api, reload)
@@ -273,7 +296,7 @@ object StockFeature : FeatureModule() {
             onDismissRequest = onDismiss,
             title = { Text("$title — ${item.optString("name")}") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${item.optString("storage_label")}: ${fmt(item.optDouble("storage_qty"))} $unit · ${item.optString("ready_label")}: ${fmt(item.optDouble("ready_qty"))} $unit", fontSize = 12.sp)
                     when (action) {
                         "METER" -> {

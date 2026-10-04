@@ -41,7 +41,7 @@ object MarketingFeature : FeatureModule() {
     override val slug = "marketing"
     override val nav = NavModule("marketing", "Marketing", Icons.AutoMirrored.Filled.Send, listOf("marketing"), order = 35)
 
-    private val http by lazy { OkHttpClient() }
+    private val http by lazy { com.example.psbill.core.ActivityLog.client }
 
     private data class Contact(val name: String, val phone: String)
 

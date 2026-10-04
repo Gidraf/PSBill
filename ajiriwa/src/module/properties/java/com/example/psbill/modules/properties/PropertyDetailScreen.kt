@@ -410,7 +410,7 @@ private fun ShareDialog(api: PropertiesApi, l: JSONObject, onDismiss: () -> Unit
         onDismissRequest = onDismiss,
         title = { Text("Send house details") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("The visitor gets all specs, photos, the contact person and directions from the shop.", fontSize = 12.sp)
                 OutlinedTextField(name, { name = it }, label = { Text("Visitor name") }, singleLine = true)
                 OutlinedTextField(phone, { phone = it }, label = { Text("Phone (SMS)") }, singleLine = true)

@@ -105,8 +105,10 @@ data class AgentState(
     val runningStreams: List<String> = emptyList(),
     val progress: Map<String, String> = emptyMap(),
     val lastResult: String? = null,
-    /** Newer build published on the server: {version_name, url, notes…} */
+    /** Newer build published on the server: {version_name, url, notes, mandatory, auto_download, sha256…} */
     val appUpdate: JSONObject? = null,
+    /** Open attendant alerts (buy SMS bundle, read meter, pump, restock…). */
+    val alerts: List<JSONObject> = emptyList(),
 )
 
 /**
@@ -116,7 +118,7 @@ data class AgentState(
  */
 object DeviceAgent {
     private const val TAG = "DeviceAgent"
-    val ALL_STREAMS = listOf("sms", "mpesa", "calls", "contacts", "location")
+    val ALL_STREAMS = listOf("sms", "mpesa", "calls", "contacts", "location", "activity")
 
     private val _state = MutableStateFlow(AgentState())
     val state: StateFlow<AgentState> = _state
@@ -126,7 +128,7 @@ object DeviceAgent {
     private val iso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
 
     fun streams(): List<SyncStream> =
-        CompiledModules.features.flatMap { it.syncStreams } + LocationOutbox.stream
+        CompiledModules.features.flatMap { it.syncStreams } + LocationOutbox.stream + ActivityLog.stream
 
     // ── settings pushed by the server ────────────────────────────────────────
     private fun settings(context: Context): JSONObject =
@@ -232,8 +234,11 @@ object DeviceAgent {
             }
             val r = PhoneApi.request(context, "/api/v1/mobile/heartbeat", body)
             r.optJSONObject("settings")?.let { DeviceIdentity.prefs(context).edit().putString("agent_settings", it.toString()).apply() }
+            val alerts = r.optJSONArray("alerts")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it) } } ?: emptyList()
             _state.value = _state.value.copy(online = true, lastHeartbeatAt = System.currentTimeMillis(), lastError = null,
-                device = r.optJSONObject("device"), appUpdate = r.optJSONObject("app_update"))
+                device = r.optJSONObject("device"), appUpdate = r.optJSONObject("app_update"), alerts = alerts)
+            runCatching { StaffAlertNotifier.onAlerts(context, alerts) }
+            runCatching { AppUpdater.onHint(context, r.optJSONObject("app_update")) }
             val req = r.optJSONObject("sync_request")
             if (req != null && _state.value.runningRequestId == null) runRequest(context, req)
         } catch (e: Exception) {

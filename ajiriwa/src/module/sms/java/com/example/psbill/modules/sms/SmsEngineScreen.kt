@@ -1,5 +1,7 @@
 package com.example.psbill.ui.screens
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Context
@@ -67,7 +69,7 @@ fun SmsEngineScreen(
 ) {
     val context = LocalContext.current
     val client = remember { 
-        OkHttpClient.Builder()
+        com.example.psbill.core.ActivityLog.builder()
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -653,7 +655,7 @@ fun SmsEngineScreen(
             containerColor = AjiriwaColors.Surface,
             title = { Text("Compose SMS", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Dispatched directly via Ajiriwa SMS Engine.", color = AjiriwaColors.TextSecondary, fontSize = 12.sp)
 
                     if (availableSims.size > 1 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {

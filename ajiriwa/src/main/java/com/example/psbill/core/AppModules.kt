@@ -46,10 +46,13 @@ object AppModules {
     /** Always compiled: phone sync control + movement (core, not a module). */
     val deviceSyncNav = NavModule("device_sync", "Sync & tracking", Icons.Filled.LocationOn, order = 95)
 
+    /** Always compiled: the phone's apps, opened (and logged) through Ajiriwa — launcher mode. */
+    val appsNav = NavModule("apps", "Phone apps", Icons.Filled.Phone, order = 97)
+
     /** Every nav item compiled into this build, in drawer order. */
     val partnerNav: List<NavModule>
         get() = (CompiledModules.features.map { it.nav } +
-            builtInNav.filter { CompiledModules.has(it.first) }.map { it.second } + deviceSyncNav)
+            builtInNav.filter { CompiledModules.has(it.first) }.map { it.second } + deviceSyncNav + appsNav)
             .sortedBy { it.order }
 
     /** Super-admin drawer: everything compiled, no partner gating. */

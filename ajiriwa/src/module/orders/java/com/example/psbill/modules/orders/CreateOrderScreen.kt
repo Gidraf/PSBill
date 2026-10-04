@@ -1,5 +1,7 @@
 package com.example.psbill.ui.screens
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.content.Context
 import android.location.Location
 import android.location.LocationManager
@@ -42,7 +44,7 @@ fun CreateOrderScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val client = remember { OkHttpClient() }
+    val client = remember { com.example.psbill.core.ActivityLog.client }
     val base = remember(server) { "https://${server.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')}" }
 
     // Retrieve auth token from SharedPreferences as fallback
@@ -75,6 +77,7 @@ fun CreateOrderScreen(
     // Products states
     var productSearchQuery by remember { mutableStateOf("") }
     var productsList by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var serverProblem by remember { mutableStateOf<String?>(null) }   // e.g. STOCK_TOO_LOW
     var isFetchingProducts by remember { mutableStateOf(false) }
     val selectedItems = remember { mutableStateListOf<JSONObject>() }
 
@@ -560,7 +563,7 @@ fun CreateOrderScreen(
                                                     Toast.makeText(context, "✅ Order Created Successfully!", Toast.LENGTH_LONG).show()
                                                     onOrderCreated()
                                                 } else {
-                                                    Toast.makeText(context, "Failed ($response.code)", Toast.LENGTH_SHORT).show()
+                                                    serverProblem = orderErrorText(respStr, response.code)
                                                 }
                                                 response.close()
                                             }
@@ -582,13 +585,22 @@ fun CreateOrderScreen(
             }
         }
 
+        serverProblem?.let { msg ->
+            AlertDialog(
+                onDismissRequest = { serverProblem = null },
+                title = { Text("Order not saved") },
+                text = { Text(msg, modifier = Modifier.verticalScroll(rememberScrollState())) },
+                confirmButton = { TextButton(onClick = { serverProblem = null }) { Text("OK") } },
+            )
+        }
+
         // Inline Create Customer Dialog
         if (showCreateCustDialog) {
             AlertDialog(
                 onDismissRequest = { showCreateCustDialog = false },
                 title = { Text("Add New Customer") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = newCustName,
                             onValueChange = { newCustName = it },
@@ -693,3 +705,13 @@ private fun numberOf(c: JSONObject): String {
 private fun nameOfProduct(p: JSONObject): String = p.optString("name").ifBlank { "Product" }
 
 private fun priceOf(p: JSONObject): Double = p.optDouble("price", p.optDouble("selling_price", 0.0))
+
+/** Server error → text for the attendant (stock guard lists each product that would go negative). */
+internal fun orderErrorText(body: String, code: Int): String = runCatching {
+    val j = JSONObject(body)
+    val head = j.optString("message").ifBlank { j.optString("error") }.ifBlank { "Failed (HTTP $code)" }
+    val probs = j.optJSONArray("problems")
+    if (probs == null || probs.length() == 0) head
+    else head + "\n\n" + (0 until probs.length()).mapNotNull { probs.optJSONObject(it)?.optString("message")?.takeIf { m -> m.isNotBlank() } }
+        .joinToString("\n") { "• $it" }
+}.getOrElse { "Failed (HTTP $code)" }

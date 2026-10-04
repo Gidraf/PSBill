@@ -1,5 +1,7 @@
 package com.example.psbill.modules.sms
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Context
@@ -47,7 +49,7 @@ object SmsFeature : FeatureModule() {
     override val nav = NavModule("sms", "SMS Engine", Icons.Filled.Email, order = 30)
     override val syncStreams get() = SmsSync.streams
 
-    private val http by lazy { OkHttpClient() }
+    private val http by lazy { com.example.psbill.core.ActivityLog.client }
 
     @Composable
     override fun Content(ctx: ModuleContext) {
@@ -159,7 +161,7 @@ object SmsFeature : FeatureModule() {
             containerColor = Color(0xFF161E2F),
             title = { Text("Send SMS", color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = smsPhone,
                         onValueChange = { smsPhone = it },

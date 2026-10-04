@@ -1,5 +1,7 @@
 package com.example.psbill
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -71,7 +73,7 @@ import java.util.TimeZone
 
 class MainActivity : ComponentActivity() {
 
-    private val client = OkHttpClient()
+    private val client = com.example.psbill.core.ActivityLog.client
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     private fun normalizeServerHost(raw: String): String =
@@ -260,11 +262,40 @@ class MainActivity : ComponentActivity() {
         val savedUser = prefs.getString("user_json", "") ?: ""
         val savedPrinterIp = prefs.getString("printer_ip", "") ?: ""
 
+        com.example.psbill.core.ActivityLog.init(this)
+        com.example.psbill.core.AppUpdater.restore(this)
+        openFromIntent(intent)
+
         setContent {
             com.example.psbill.ui.theme.AjiriwaTheme {
-                AttenderApp(savedServer, savedPartner, savedToken, savedUser, savedPrinterIp)
+                val update by com.example.psbill.core.AppUpdater.state.collectAsState()
+                if (update.mandatory) com.example.psbill.ui.UpdateRequiredScreen()
+                else AttenderApp(savedServer, savedPartner, savedToken, savedUser, savedPrinterIp)
             }
         }
+    }
+
+    /** Screen asked for by a notification (alerts open Stock / SMS). */
+    private val openRequest = mutableStateOf<String?>(null)
+
+    private fun openFromIntent(i: Intent?) {
+        i?.getStringExtra(com.example.psbill.core.StaffAlertNotifier.EXTRA_OPEN)?.let { openRequest.value = it }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openFromIntent(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        com.example.psbill.core.ActivityLog.log("app_open", context = this)
+        com.example.psbill.core.AppUpdater.restore(this)
+    }
+
+    override fun onStop() {
+        com.example.psbill.core.ActivityLog.log("app_background", context = this)
+        super.onStop()
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -930,7 +961,13 @@ class MainActivity : ComponentActivity() {
                 com.example.psbill.core.Permissions.isArcadeAgent(userJson) -> "Arcade attendant"
                 else -> "Business"
             }
+            LaunchedEffect(selectedKey) { com.example.psbill.core.ActivityLog.log("screen_open", screen = selectedKey, context = context) }
+            val requestedScreen by openRequest
+            LaunchedEffect(requestedScreen) {
+                requestedScreen?.let { k -> if (drawerItems.any { it.key == k }) selectedKey = k; openRequest.value = null }
+            }
             val doLogout: () -> Unit = {
+                com.example.psbill.core.ActivityLog.log("logout", context = context)
                 com.example.psbill.core.CompiledModules.features.forEach { runCatching { it.onLogout(context) } }
                 com.example.psbill.core.DeviceAgent.onLogout(context)
                 authToken = ""
@@ -976,6 +1013,8 @@ class MainActivity : ComponentActivity() {
                 },
             ) { contentModifier ->
                 Column(modifier = contentModifier) {
+                    com.example.psbill.ui.AlertsBanner(onOpen = { k -> if (drawerItems.any { it.key == k }) selectedKey = k })
+                    com.example.psbill.ui.UpdateBanner()
                     if (selectedKey == "kiosk" && (!wsConnected || disconnectedTvNames.isNotEmpty())) {
                         val hasDisconnectedTvs = disconnectedTvNames.isNotEmpty()
                         val bannerText = when {
@@ -1072,6 +1111,7 @@ class MainActivity : ComponentActivity() {
                             com.example.psbill.core.CompiledModules.feature(selectedKey)?.Content(moduleCtx)
                         "wifi" -> if (com.example.psbill.core.CompiledModules.has("wifi")) WifiBillingTab(serverDomain, getHeaders)
                         "device_sync" -> com.example.psbill.ui.DeviceSyncScreen(moduleCtx)
+                        "apps" -> com.example.psbill.ui.AppsScreen()
                         "settings" -> SettingsTab(
                             partner = partnerId,
                             serverDomain = serverDomain,
@@ -2154,7 +2194,7 @@ class MainActivity : ComponentActivity() {
             containerColor = Color(0xFF161E2F),
             title = { Text("Link TV Manually", color = Color.White) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = fingerprint,
                         onValueChange = { fingerprint = it },
@@ -2741,7 +2781,7 @@ class MainActivity : ComponentActivity() {
                 containerColor = Color(0xFF161E2F),
                 title = { Text("Generate Voucher", color = Color.White) },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
                             value = durationMinutes,
                             onValueChange = { durationMinutes = it },
@@ -2848,7 +2888,7 @@ class MainActivity : ComponentActivity() {
                 containerColor = Color(0xFF161E2F),
                 title = { Text("Send Voucher via SMS", color = Color.White) },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Enter the recipient's phone number (with country code, e.g. +254712345678)", color = Color.Gray, fontSize = 13.sp)
                         OutlinedTextField(
                             value = smsSendPhone,
@@ -2910,7 +2950,7 @@ class MainActivity : ComponentActivity() {
                 text = {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
@@ -3645,7 +3685,7 @@ class MainActivity : ComponentActivity() {
             containerColor = Color(0xFF0F172A),
             title = { Text("Receipt Sharing options", color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Game: $game • Amount: KES ${amt.toInt()}", color = Color(0xFF00E676), fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text("Public Link: $publicLink", color = Color.LightGray, fontSize = 11.sp)
 
@@ -3665,7 +3705,7 @@ class MainActivity : ComponentActivity() {
                                     put("recipient_phone", customerPhone)
                                     put("message_text", msgText)
                                 }
-                                val client = OkHttpClient()
+                                val client = com.example.psbill.core.ActivityLog.client
                                 val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
                                 val req = Request.Builder()
                                     .url("https://$server/api/v1/kiosk/sms/send")
@@ -3931,7 +3971,7 @@ class MainActivity : ComponentActivity() {
                     containerColor = Color(0xFF0F172A),
                     title = { Text("Create WiFi Hotspot Package", color = Color.White, fontWeight = FontWeight.Bold) },
                     text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedTextField(
                                 value = "",
                                 onValueChange = {},
@@ -3962,7 +4002,7 @@ class MainActivity : ComponentActivity() {
                     containerColor = Color(0xFF0F172A),
                     title = { Text("Generate WiFi Voucher Batch", color = Color.White, fontWeight = FontWeight.Bold) },
                     text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("Vouchers can be printed or sent directly to customers via SMS.", color = Color.Gray, fontSize = 12.sp)
                             OutlinedTextField(
                                 value = "10",

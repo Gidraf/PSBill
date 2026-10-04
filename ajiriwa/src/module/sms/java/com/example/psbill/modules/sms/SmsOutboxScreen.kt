@@ -81,7 +81,7 @@ fun SmsOutboxScreen(modifier: Modifier = Modifier) {
     }
 
     val client = remember {
-        OkHttpClient.Builder()
+        com.example.psbill.core.ActivityLog.builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

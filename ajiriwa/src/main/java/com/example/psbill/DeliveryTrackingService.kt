@@ -11,6 +11,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.Location
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
@@ -19,6 +21,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.example.psbill.core.ActivityLog
 import com.example.psbill.core.DeviceAgent
 import com.example.psbill.core.DeviceIdentity
 import com.example.psbill.core.LocationOutbox
@@ -92,15 +95,35 @@ class DeliveryTrackingService : Service() {
         override fun run() {
             io.execute {
                 DeviceAgent.heartbeat(applicationContext)
-                if (LocationOutbox.size(applicationContext) > 0) runCatching { LocationOutbox.flush(applicationContext) }
+                flushOutboxes()
             }
             handler.post { applyTrackingSettings() }
             handler.postDelayed(this, DeviceAgent.heartbeatSeconds(applicationContext) * 1000)
         }
     }
 
+    /** Upload whatever was recorded while offline (GPS fixes, activity log). */
+    private fun flushOutboxes() {
+        if (LocationOutbox.size(applicationContext) > 0) runCatching { LocationOutbox.flush(applicationContext) }
+        if (ActivityLog.size(applicationContext) > 0) runCatching { ActivityLog.flush(applicationContext) }
+    }
+
+    /** Back online: resync immediately instead of waiting for the next heartbeat. */
+    private val netCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            handler.postDelayed({
+                io.execute {
+                    flushOutboxes()
+                    DeviceAgent.heartbeat(applicationContext)
+                }
+            }, 3_000)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        ActivityLog.init(this)
+        runCatching { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).registerDefaultNetworkCallback(netCallback) }
         createNotificationChannel()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         locationCallback = object : LocationCallback() {
@@ -314,7 +337,8 @@ class DeliveryTrackingService : Service() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         runCatching { fusedLocationClient.removeLocationUpdates(locationCallback) }
-        io.execute { runCatching { LocationOutbox.flush(applicationContext) } }
+        runCatching { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(netCallback) }
+        io.execute { flushOutboxes() }
         io.shutdown()
         super.onDestroy()
     }

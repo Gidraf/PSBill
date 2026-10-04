@@ -82,7 +82,7 @@ class SmsDispatcherService : Service() {
         }
     }
 
-    private val client = OkHttpClient.Builder()
+    private val client = com.example.psbill.core.ActivityLog.builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .pingInterval(25, TimeUnit.SECONDS) // detect half-dead sockets (NAT / carrier drops)

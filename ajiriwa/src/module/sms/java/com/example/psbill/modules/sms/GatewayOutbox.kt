@@ -31,7 +31,7 @@ object GatewayOutbox {
     private val lock = Any()
     @Volatile private var flushing = false
 
-    private val http = OkHttpClient.Builder()
+    private val http = com.example.psbill.core.ActivityLog.builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)

@@ -22,10 +22,20 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- In-app updates (PackageInstaller) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Storage for CSV report downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- Apps screen / launcher mode lists the phone's launchable apps -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -45,11 +55,28 @@
             </intent-filter>
         </activity>
 
+        <!-- Launcher mode: off by default, switched on from Apps -> "Use Ajiriwa as the home screen" -->
+        <activity-alias
+            android:name=".LauncherAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
         <service
             android:name=".DeliveryTrackingService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location|dataSync" />
+
+        <receiver
+            android:name=".core.InstallResultReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".core.AgentBootReceiver"

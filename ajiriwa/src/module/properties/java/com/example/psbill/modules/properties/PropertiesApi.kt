@@ -100,7 +100,7 @@ class PropertiesApi(private val ctx: ModuleContext) {
     }.getOrNull()
 
     companion object {
-        val http: OkHttpClient = OkHttpClient.Builder()
+        val http: OkHttpClient = com.example.psbill.core.ActivityLog.builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS) // photo uploads on slow mobile data

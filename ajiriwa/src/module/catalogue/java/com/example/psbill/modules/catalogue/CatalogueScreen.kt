@@ -37,7 +37,7 @@ import java.io.IOException
  */
 @Composable
 fun CatalogueScreen(server: String, headers: () -> Headers, modifier: Modifier = Modifier) {
-    val client = remember { OkHttpClient() }
+    val client = remember { com.example.psbill.core.ActivityLog.client }
     var products by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }

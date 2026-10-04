@@ -39,7 +39,7 @@ import java.io.IOException
  */
 @Composable
 fun CustomersScreen(server: String, headers: () -> Headers, modifier: Modifier = Modifier) {
-    val client = remember { OkHttpClient() }
+    val client = remember { com.example.psbill.core.ActivityLog.client }
     var all by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }

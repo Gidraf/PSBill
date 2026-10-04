@@ -33,7 +33,7 @@ import java.io.IOException
  */
 @Composable
 fun DashboardScreen(server: String, headers: () -> Headers, modifier: Modifier = Modifier) {
-    val client = remember { OkHttpClient() }
+    val client = remember { com.example.psbill.core.ActivityLog.client }
     val base = remember(server) { "https://${server.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')}" }
 
     var analytics by remember { mutableStateOf<JSONObject?>(null) }

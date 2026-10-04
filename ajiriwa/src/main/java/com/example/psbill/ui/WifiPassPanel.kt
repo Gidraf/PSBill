@@ -29,7 +29,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
-private val passHttp by lazy { OkHttpClient() }
+private val passHttp by lazy { com.example.psbill.core.ActivityLog.client }
 
 /**
  * PlayStation WiFi: give a customer WiFi for exactly N minutes. The voucher is
