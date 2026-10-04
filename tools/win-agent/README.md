@@ -1,31 +1,30 @@
-# Ajiriwa Windows agent (build tooling)
+# Ajiriwa Windows agent — build tooling
 
-The agent **source** is canonical in CVPAP at `app/services/winagent_payload/`
-(so the server can zip + stamp it per business on download). This folder holds
-the tooling to turn that source into a signed `ajiriwa-agent.exe`, so partners
-don't need Python on their PCs.
+The agent **source** is canonical in CVPAP at `app/services/winagent_payload/`.
+Compiling it into `ajiriwa-agent.exe` is **automated from the web** — you don't
+run anything here by hand:
 
-## What the agent is
-A consent-based management agent for a business's OWN Windows machines. It reports
-status / network / connected-peripheral count + insert-remove / selected Windows
-events, and carries out ONLY an allow-list of actions (lock, sign out, message,
-restart, shut down, start/stop session). No remote shell, no keylogging, no screen
-capture. See the header of `agent.py` and `README.txt` in the payload.
+1. Admin dashboard → **Windows machines → Compile**.
+2. That queues a `winagent` build job. The build server agent
+   (`tools/server-build/builder_agent.py`) picks it up, builds the Docker image
+   `tools/server-build/Dockerfile.winebuild` (PyInstaller + Windows Python under
+   Wine) the first time, fetches the agent source from CVPAP
+   (`/api/v1/win-agent/worker/payload`), compiles `ajiriwa-agent.exe`, and uploads it.
+3. From then on, every per-business installer the dashboard builds bundles the exe,
+   so the café PCs need no Python. Until it's built, the installer ships the Python
+   source and `install.ps1` falls back to system Python.
 
-## Build the exe (Windows build host, or Linux + Wine)
-    CVPAP=../../..                      # path to the CVPAP checkout on this host
-    cp -r "$CVPAP/CVPAP/app/services/winagent_payload" ./payload
-    cd payload
-    pip install pyinstaller
-    python build.py                     # -> dist/ajiriwa-agent.exe
-    # sign it with your code-signing cert (signtool / osslsigncode), then:
-    cp dist/ajiriwa-agent.exe "$CVPAP/CVPAP/app/services/winagent_payload/ajiriwa-agent.exe"
+No Windows host and no manual Wine setup are needed — the builder builds the image
+on demand, exactly like the Android build image.
 
-Once the exe sits next to the source in the payload dir, every per-business
-installer the dashboard builds includes it, and `install.ps1` uses it instead of
-system Python. `agent_config.json` (the business token) is still added per
-download, so one exe serves every business and no token is baked into the binary.
+## Signing (optional)
+The exe is currently **unsigned**, so Windows SmartScreen shows a warning on first
+run. To sign it, add `osslsigncode` to `Dockerfile.winebuild` and a signing step
+after PyInstaller in `builder_agent.build_winagent`, using your code-signing cert.
 
-## Per-business install (what the partner does)
-Admin -> Windows machines -> pick business -> Create installer -> Download.
-Unzip on each PC, run `install.ps1` as Administrator, accept the on-screen notice.
+## What the agent is / isn't
+Consent-based management for a business's OWN machines: reports status / network /
+connected-peripheral count + insert-remove / selected Windows events, and runs only
+an allow-list of actions (lock, sign out, message, restart, shut down, start/stop
+session). No remote shell, no keylogging, no screen capture. See the payload's
+`README.txt` and the header of `agent.py`.

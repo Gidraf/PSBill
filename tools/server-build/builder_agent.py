@@ -28,6 +28,7 @@ import urllib.error
 import urllib.request
 import uuid
 import base64
+import io
 import hashlib
 
 CVPAP_URL = os.environ.get("CVPAP_URL", "https://api.ajiriwa.gidraf.dev").rstrip("/")
@@ -159,8 +160,99 @@ def ensure_image(jid, tail):
         raise RuntimeError(f"could not build the Docker image {IMAGE} (see log); check disk space and internet on the build server")
 
 
+WINE_IMAGE = os.environ.get("WINE_IMAGE", "ajiriwa-winagent-builder")
+
+
+def ensure_wine_image(jid, tail):
+    """Build the PyInstaller-in-Wine image once (from Dockerfile.winebuild next to
+    this script). Lets the Linux build server produce a Windows .exe with no manual
+    setup; Docker would otherwise try to pull a non-existent image."""
+    ctx = os.path.dirname(os.path.abspath(__file__))
+    df = os.path.join(ctx, "Dockerfile.winebuild")
+    with open(df, "rb") as f:
+        want = hashlib.sha256(f.read()).hexdigest()[:16]
+    have = subprocess.run(["docker", "image", "inspect", "-f",
+                           '{{index .Config.Labels "ajiriwa.dockerfile"}}', WINE_IMAGE],
+                          capture_output=True, text=True)
+    if have.returncode == 0 and have.stdout.strip() == want:
+        return
+    progress(jid, "Preparing the Windows build image (first time takes ~15 minutes)")
+    p = subprocess.Popen(["docker", "build", "--label", f"ajiriwa.dockerfile={want}",
+                          "-f", df, "-t", WINE_IMAGE, ctx],
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    for line in p.stdout:
+        tail.append(line.rstrip())
+    if p.wait() != 0:
+        raise RuntimeError(f"could not build the Windows build image {WINE_IMAGE} (see log)")
+
+
+def build_winagent(job):
+    """Compile ajiriwa-agent.exe from the CVPAP agent source using PyInstaller in Wine.
+    The source is fetched from CVPAP (no PSBill checkout needed); no token is baked in."""
+    jid = job["id"]
+    tail = collections.deque(maxlen=120)
+    work = tempfile.mkdtemp(prefix="winagent-")
+    try:
+        progress(jid, "Fetching the agent source")
+        req = urllib.request.Request(CVPAP_URL + "/api/v1/win-agent/worker/payload",
+                                     headers={"X-Builder-Token": TOKEN})
+        with urllib.request.urlopen(req, timeout=120) as r:
+            zbytes = r.read()
+        src = os.path.join(work, "src")
+        os.makedirs(src, exist_ok=True)
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(zbytes)) as z:
+            z.extractall(src)
+        ensure_wine_image(jid, tail)
+
+        # read the agent version for a friendly name
+        name = "1.0"
+        try:
+            m = re.search(r'AGENT_VERSION\s*=\s*"([^"]+)"', open(os.path.join(src, "agent.py")).read())
+            if m:
+                name = m.group(1)
+        except Exception:
+            pass
+        code = int(time.time())
+
+        progress(jid, f"Compiling ajiriwa-agent.exe v{name}")
+        cmd = ["docker", "run", "--rm", "-v", f"{src}:/src", "-w", "/src", WINE_IMAGE,
+               "sh", "-c", "wine python -m PyInstaller --onefile --noconsole --clean "
+               "--name ajiriwa-agent --hidden-import collectors --hidden-import executor "
+               "--hidden-import httpc --hidden-import outbox agent.py"]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        last = 0.0
+        for line in p.stdout:
+            tail.append(line.rstrip())
+            if time.time() - last > 3:
+                progress(jid, None, list(tail)[-60:])
+                last = time.time()
+        if p.wait() != 0:
+            raise RuntimeError("PyInstaller failed")
+        exe = os.path.join(src, "dist", "ajiriwa-agent.exe")
+        if not os.path.exists(exe):
+            raise RuntimeError("ajiriwa-agent.exe not produced")
+        progress(jid, "Uploading", list(tail)[-60:])
+        status, res = upload(jid, exe, {"version_code": code, "version_name": name,
+                                        "notes": "Windows agent", "log": "\n".join(list(tail)[-60:])})
+        if status >= 300:
+            raise RuntimeError(f"upload refused: {res.get('error') or status}")
+        log(f"job {jid}: ajiriwa-agent.exe v{name} ready")
+    except Exception as e:
+        log(f"job {jid} (winagent) failed: {e}")
+        try:
+            api(f"/api/v1/app-builds/worker/jobs/{jid}/finish", {"error": str(e)[:1500], "log": "\n".join(list(tail)[-80:])})
+        except Exception:
+            pass
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def run_job(job):
     jid, app = job["id"], job["app"]
+    if app == "winagent":
+        build_winagent(job)
+        return
     modules = ",".join(job.get("modules") or [])
     tail = collections.deque(maxlen=120)
     tmp = tempfile.mkdtemp(prefix="apk-sign-")

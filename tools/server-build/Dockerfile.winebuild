@@ -1,0 +1,12 @@
+# Builds ajiriwa-agent.exe (a Windows PE) on the Linux build server, using a
+# Windows Python running under Wine + PyInstaller. Built once by the builder agent
+# (ensure_wine_image), cached thereafter. No manual setup, no Windows host.
+FROM tobix/pywine:3.12
+
+# PyInstaller inside the Wine Python. (The base image's `wine python` is Windows Python.)
+RUN wine python -m pip install --no-cache-dir --upgrade pip pyinstaller
+
+WORKDIR /src
+# The builder runs: docker run --rm -v <src>:/src <image> \
+#   sh -c "wine python -m PyInstaller --onefile --noconsole --name ajiriwa-agent agent.py"
+# and collects /src/dist/ajiriwa-agent.exe.
