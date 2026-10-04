@@ -290,6 +290,30 @@ object DeviceAgent {
         _state.value = _state.value.copy(runningRequestId = null, runningStreams = emptyList(), lastResult = summary)
     }
 
+    private val catchingUp = AtomicBoolean(false)
+    private var lastCatchUp = 0L
+
+    /**
+     * Upload whatever piled up on the phone (SMS, M-Pesa, calls, contacts) — on reconnect and
+     * every [every] ms. Incremental and safe to repeat: the server keeps one row per message/call.
+     * Blocking; skipped while another catch-up or a server sync request is running.
+     */
+    fun catchUp(context: Context, every: Long = 0L) {
+        if (!DeviceIdentity.signedIn(context)) return
+        if (every > 0 && System.currentTimeMillis() - lastCatchUp < every) return
+        if (_state.value.runningRequestId != null || !catchingUp.compareAndSet(false, true)) return
+        try {
+            lastCatchUp = System.currentTimeMillis()
+            streams().filter { it.key != "location" && it.key != "activity" && streamEnabled(context, it.key) }.forEach { s ->
+                runCatching { s.sync(context, false) }
+                    .onSuccess { markSynced(context, s.key) }
+                    .onFailure { Log.w(TAG, "catch-up ${s.key}: ${it.message}") }
+            }
+        } finally {
+            catchingUp.set(false)
+        }
+    }
+
     /** Local helper for screens: run an async block off the main thread on the agent executor. */
     fun runInBackground(block: () -> Unit) = jobs.execute { runCatching(block) }
 }

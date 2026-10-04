@@ -96,6 +96,7 @@ class DeliveryTrackingService : Service() {
             io.execute {
                 DeviceAgent.heartbeat(applicationContext)
                 flushOutboxes()
+                DeviceAgent.catchUp(applicationContext, every = 15 * 60_000L)
             }
             handler.post { applyTrackingSettings() }
             handler.postDelayed(this, DeviceAgent.heartbeatSeconds(applicationContext) * 1000)
@@ -115,6 +116,7 @@ class DeliveryTrackingService : Service() {
                 io.execute {
                     flushOutboxes()
                     DeviceAgent.heartbeat(applicationContext)
+                    DeviceAgent.catchUp(applicationContext)   // SMS / calls recorded while offline
                 }
             }, 3_000)
         }
