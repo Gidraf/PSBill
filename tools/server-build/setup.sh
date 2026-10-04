@@ -80,7 +80,9 @@ ENV
 umask 022
 
 say "building the Android build image (first time takes a few minutes)"
-docker build -q -t psbill-android-builder "$REPO_DIR/tools/server-build" >/dev/null </dev/null
+DF_HASH=$(sha256sum "$REPO_DIR/tools/server-build/Dockerfile" | cut -c1-16)
+docker build --label "psbill.dockerfile=$DF_HASH" -t psbill-android-builder "$REPO_DIR/tools/server-build" </dev/null \
+  || die "building the Docker image failed (output above) — check disk space / internet, then run setup again"
 
 say "installing the builder service"
 cat > /etc/systemd/system/psbill-builder.service <<UNIT

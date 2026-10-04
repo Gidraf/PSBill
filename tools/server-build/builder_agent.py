@@ -28,6 +28,7 @@ import urllib.error
 import urllib.request
 import uuid
 import base64
+import hashlib
 
 CVPAP_URL = os.environ.get("CVPAP_URL", "https://api.ajiriwa.gidraf.dev").rstrip("/")
 TOKEN = os.environ.get("BUILDER_TOKEN", "")
@@ -132,6 +133,32 @@ def progress(job_id, stage=None, lines=None, commit=None):
         log("progress failed:", e)
 
 
+def ensure_image(jid, tail):
+    """Build the Android image when it is missing (never built, or removed by a prune)
+    or when tools/server-build/Dockerfile changed. Docker would otherwise try to pull
+    IMAGE from Docker Hub, where it doesn't exist."""
+    ctx = os.path.join(REPO_DIR, "tools", "server-build")
+    with open(os.path.join(ctx, "Dockerfile"), "rb") as f:
+        want = hashlib.sha256(f.read()).hexdigest()[:16]
+    have = subprocess.run(["docker", "image", "inspect", "-f", '{{index .Config.Labels "psbill.dockerfile"}}', IMAGE],
+                          capture_output=True, text=True)
+    if have.returncode == 0 and have.stdout.strip() == want:
+        return
+    why = "missing" if have.returncode != 0 else "out of date"
+    log(f"build image {IMAGE} {why}: building it")
+    progress(jid, "Preparing the build image (first time takes about 10 minutes)")
+    p = subprocess.Popen(["docker", "build", "--label", f"psbill.dockerfile={want}", "-t", IMAGE, ctx],
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    last = 0.0
+    for line in p.stdout:
+        tail.append(line.rstrip())
+        if time.time() - last > 5:
+            progress(jid, "Preparing the build image (first time takes about 10 minutes)", list(tail)[-60:])
+            last = time.time()
+    if p.wait() != 0:
+        raise RuntimeError(f"could not build the Docker image {IMAGE} (see log); check disk space and internet on the build server")
+
+
 def run_job(job):
     jid, app = job["id"], job["app"]
     modules = ",".join(job.get("modules") or [])
@@ -142,6 +169,7 @@ def run_job(job):
         progress(jid, "Getting the latest code")
         fetch_head()
         commit, code = checkout_latest()
+        ensure_image(jid, tail)
         name = f"{VERSION_PREFIX}.{code}"
         progress(jid, f"Building v{name} ({modules or 'all modules'})", commit=commit)
 
