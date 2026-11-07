@@ -224,7 +224,35 @@ fun SmsEngineScreen(
         SmsChatScreen(
             sender = selectedChatSender!!,
             messages = selectedChatMessages,
-            onBack = { selectedChatSender = null }
+            onBack = { selectedChatSender = null },
+            onSend = { text, done ->
+                val payload = JSONObject().apply {
+                    put("recipient_phone", selectedChatSender!!)
+                    put("message_text", text)
+                }
+                val req = Request.Builder()
+                    .url("$base/api/v1/kiosk/sms/send")
+                    .post(payload.toString().toRequestBody(SMS_JSON_MT))
+                    .headers(headers())
+                    .build()
+                client.newCall(req).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            done(false)
+                            Toast.makeText(context, "Network error: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    override fun onResponse(call: Call, response: Response) {
+                        val ok = response.isSuccessful
+                        val code = response.code
+                        response.close()
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            done(ok)
+                            Toast.makeText(context, if (ok) "Reply queued" else "Not sent (server $code)", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                })
+            }
         )
         return
     }

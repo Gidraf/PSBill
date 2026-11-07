@@ -61,7 +61,49 @@ object AppUpdater {
         _state.value = _state.value.copy(hint = hint, ready = f.exists() && verify(f, hint.optString("sha256")))
     }
 
-    /** From the heartbeat. Null = nothing newer (clears a stale offer). */
+    private val checking = AtomicBoolean(false)
+
+    /**
+     * Called on every app open: asks `GET /api/v1/mobile/app-update` (signed in or not) and feeds
+     * the answer to [onHint], so a mandatory build blocks the app right away instead of after the
+     * first heartbeat. Offline: the remembered requirement ([restore]) still holds.
+     */
+    fun checkNow(context: Context) {
+        if (!checking.compareAndSet(false, true)) return
+        val app = context.applicationContext
+        io.execute {
+            try {
+                val modules = runCatching { CompiledModules.keys.joinToString(",") }.getOrDefault("")
+                val url = "https://${DeviceIdentity.server(app)}/api/v1/mobile/app-update?app=ajiriwa" +
+                    "&version_code=${DeviceAgent.installedVersionCode(app)}" +
+                    "&modules=" + java.net.URLEncoder.encode(modules, "UTF-8")
+                val token = DeviceIdentity.token(app)
+                val b = Request.Builder().url(url).header("X-Device-Id", DeviceIdentity.installId(app))
+                if (token.isNotBlank()) b.header("Authorization", "Bearer $token")
+                PhoneApi.http.newCall(b.build()).execute().use { r ->
+                    if (r.code == 401 || r.code == 422) {
+                        // expired session: ask again without the token (default build for this app)
+                        PhoneApi.http.newCall(Request.Builder().url(url).build()).execute().use { r2 -> handle(app, r2, signedIn = false) }
+                    } else handle(app, r, signedIn = token.isNotBlank())
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "checkNow: ${e.message}")
+            } finally {
+                checking.set(false)
+            }
+        }
+    }
+
+    /** Signed out, the server only knows the default build: it may add an offer, never clear the
+     *  business's assigned (possibly mandatory) one that the heartbeat stored. */
+    private fun handle(app: Context, r: okhttp3.Response, signedIn: Boolean) {
+        if (!r.isSuccessful) return
+        val json = runCatching { JSONObject(r.body?.string().orEmpty()) }.getOrNull() ?: return
+        val hint = json.optJSONObject("app_update")
+        if (hint != null || signedIn) onHint(app, hint)
+    }
+
+    /** From the heartbeat / [checkNow]. Null = nothing newer (clears a stale offer). */
     fun onHint(context: Context, hint: JSONObject?) {
         val p = DeviceIdentity.prefs(context)
         if (hint == null || hint.optLong("version_code") <= DeviceAgent.installedVersionCode(context)) {

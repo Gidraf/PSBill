@@ -62,6 +62,20 @@ upload and picks up sync requests from the web / app. Modules add sync streams t
 `FeatureModule.syncStreams` (the SMS module adds SMS, M-Pesa, calls, contacts). UI:
 drawer → **Sync & tracking** (this phone, all phones, synced data, movement).
 
+Updates: on every app open `AppUpdater.checkNow` asks `GET /api/v1/mobile/app-update`
+(signed in or not), then the heartbeat keeps asking. A `mandatory` answer (build or release
+flag, or the business setting `app.require_latest`) shows `UpdateRequiredScreen` until the
+new APK is installed; the requirement is remembered offline.
+
+Customers saved in the app (real name, nickname, house, location) go to
+`/api/v1/customers/<partner>/profiles`; offline they wait in `CustomerOutbox` and are sent
+through the contact sync (`link_phone`, newest edit wins). SMS greet by the real first name,
+else "Customer" - never the phone's contact name.
+
+Keyboard: the app is edge-to-edge and the root pads for system bars + keyboard
+(`safeDrawingPadding`), so screens shrink above the IME; forms must scroll (`verticalScroll`
+or a lazy list) so the focused field stays reachable on small phones.
+
 ## Builds on the server
 
 Signed APKs with any module selection are built on the server by

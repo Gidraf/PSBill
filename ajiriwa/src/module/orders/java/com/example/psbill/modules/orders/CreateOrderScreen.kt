@@ -623,36 +623,54 @@ fun CreateOrderScreen(
                                 return@Button
                             }
                             isCreatingCust = true
+                            // One path for customers: /customers/<partner>/profiles -> link_phone (existing
+                            // number = that customer). The typed name is the real name (SMS greet by it).
+                            val partnerId = com.example.psbill.core.DeviceIdentity.partnerId(context)
                             val payload = JSONObject().apply {
-                                put("whatsappName", newCustName.ifBlank { "Customer" })
-                                put("whatsappNumber", newCustPhone)
-                                put("phone_number", newCustPhone)
+                                put("phone", newCustPhone.trim())
+                                if (newCustName.isNotBlank()) {
+                                    put("name", newCustName.trim())
+                                    put("full_name", newCustName.trim())
+                                }
                             }
                             val mediaType = "application/json; charset=utf-8".toMediaType()
                             val body = payload.toString().toRequestBody(mediaType)
                             val request = Request.Builder()
-                                .url("$base/api/v1/customers")
+                                .url("$base/api/v1/customers/$partnerId/profiles")
                                 .headers(getEffectiveHeaders())
                                 .post(body)
                                 .build()
 
                             client.newCall(request).enqueue(object : Callback {
                                 override fun onFailure(call: Call, e: IOException) {
-                                    android.os.Handler(android.os.Looper.getMainLooper()).post { isCreatingCust = false }
+                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                        isCreatingCust = false
+                                        Toast.makeText(context, "Network error: ${e.message}", Toast.LENGTH_LONG).show()
+                                    }
                                 }
                                 override fun onResponse(call: Call, response: Response) {
                                     val respBody = response.body?.string() ?: ""
+                                    val ok = response.isSuccessful
+                                    val code = response.code
+                                    response.close()
                                     android.os.Handler(android.os.Looper.getMainLooper()).post {
                                         isCreatingCust = false
-                                        if (response.isSuccessful) {
-                                            val createdObj = JSONObject(respBody)
-                                            val cust = createdObj.optJSONObject("data") ?: createdObj
+                                        val obj = runCatching { JSONObject(respBody) }.getOrElse { JSONObject() }
+                                        if (ok) {
+                                            val cust = obj.optJSONObject("data") ?: obj
+                                            // fields the order screens read (legacy customer shape)
+                                            val shown = cust.optString("full_name").takeIf { it.isNotBlank() && it != "null" }
+                                                ?: cust.optString("contact_name").takeIf { it.isNotBlank() && it != "null" } ?: "Customer"
+                                            cust.put("whatsappName", shown)
+                                            cust.put("whatsappNumber", cust.optString("phone", newCustPhone))
+                                            cust.put("phone_number", cust.optString("phone", newCustPhone))
                                             selectedCustomer = cust
                                             mpesaPhone = newCustPhone
                                             showCreateCustDialog = false
-                                            Toast.makeText(context, "Customer Created!", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Customer saved", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, obj.optString("error").ifBlank { "Not saved (server $code)" }, Toast.LENGTH_LONG).show()
                                         }
-                                        response.close()
                                     }
                                 }
                             })
