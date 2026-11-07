@@ -19,6 +19,8 @@ import android.provider.Telephony
 import com.example.psbill.core.feature
 import com.example.psbill.core.featureKeys
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -253,6 +255,14 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Edge-to-edge on every Android version (Android 15 forces it at targetSdk 35, where
+        // adjustResize alone no longer lifts content above the keyboard). The root below pads
+        // for the status/navigation bars AND the keyboard (safeDrawing), so every screen
+        // shrinks to the space above the IME instead of hiding its input behind it.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
 
         val prefs = getSharedPreferences("AttenderPrefs", Context.MODE_PRIVATE)
@@ -268,9 +278,16 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             com.example.psbill.ui.theme.AjiriwaTheme {
-                val update by com.example.psbill.core.AppUpdater.state.collectAsState()
-                if (update.mandatory) com.example.psbill.ui.UpdateRequiredScreen()
-                else AttenderApp(savedServer, savedPartner, savedToken, savedUser, savedPrinterIp)
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(com.example.psbill.ui.theme.AjiriwaColors.Canvas)
+                        .safeDrawingPadding()
+                ) {
+                    val update by com.example.psbill.core.AppUpdater.state.collectAsState()
+                    if (update.mandatory) com.example.psbill.ui.UpdateRequiredScreen()
+                    else AttenderApp(savedServer, savedPartner, savedToken, savedUser, savedPrinterIp)
+                }
             }
         }
     }
@@ -291,6 +308,9 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         com.example.psbill.core.ActivityLog.log("app_open", context = this)
         com.example.psbill.core.AppUpdater.restore(this)
+        // Ask the server on EVERY open (not only on the heartbeat): a mandatory build blocks the app now.
+        com.example.psbill.core.AppUpdater.checkNow(this)
+        com.example.psbill.core.CustomerOutbox.flushAsync(this)
     }
 
     override fun onStop() {
@@ -2022,7 +2042,8 @@ class MainActivity : ComponentActivity() {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .wrapContentHeight(),
+                    .wrapContentHeight()
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -2296,7 +2317,7 @@ class MainActivity : ComponentActivity() {
             containerColor = Color(0xFF161E2F),
             title = { Text("Start Session: ${device.optString("name")}", color = Color.White) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text("Select Mode", color = Color.Gray, fontSize = 12.sp)
                     Row(modifier = Modifier.fillMaxWidth()) {
                         supportedModes.forEach { m ->

@@ -13,5 +13,5 @@ object CustomersFeature : FeatureModule() {
     override val nav = NavModule("customers", "Customers", Icons.Filled.Person, listOf("customers"), order = 70)
 
     @Composable
-    override fun Content(ctx: ModuleContext) = CustomersScreen(ctx.server, ctx.headers)
+    override fun Content(ctx: ModuleContext) = CustomersScreen(ctx.server, ctx.headers, ctx.partnerId)
 }

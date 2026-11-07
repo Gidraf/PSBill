@@ -26,8 +26,12 @@ fun SmsChatScreen(
     sender: String,
     messages: List<JSONObject>,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Queue a reply to [sender]; call the callback with true once accepted. Null hides the reply bar. */
+    onSend: ((text: String, done: (Boolean) -> Unit) -> Unit)? = null,
 ) {
+    var reply by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
     var conversationTab by remember { mutableStateOf("ALL") } // ALL, CHATS, CALLS
     val listState = rememberLazyListState()
 
@@ -211,6 +215,48 @@ fun SmsChatScreen(
                             fontSize = 10.sp,
                             modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp)
                         )
+                    }
+                }
+            }
+        }
+
+        // Reply bar: sits under the list; the app root pads for the keyboard (edge-to-edge
+        // safeDrawing), so it stays visible while typing and the list above shrinks and scrolls.
+        if (onSend != null) {
+            Surface(color = AjiriwaColors.SurfaceAlt, modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = reply,
+                        onValueChange = { reply = it },
+                        placeholder = { Text("Reply by SMS...", color = AjiriwaColors.TextMuted) },
+                        modifier = Modifier.weight(1f).heightIn(max = 140.dp),
+                        maxLines = 5,
+                        shape = RoundedCornerShape(18.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AjiriwaColors.Primary,
+                            unfocusedBorderColor = AjiriwaColors.Border,
+                            focusedTextColor = AjiriwaColors.TextPrimary,
+                            unfocusedTextColor = AjiriwaColors.TextPrimary
+                        )
+                    )
+                    Button(
+                        onClick = {
+                            val text = reply.trim()
+                            if (text.isNotEmpty()) {
+                                sending = true
+                                onSend(text) { ok -> sending = false; if (ok) reply = "" }
+                            }
+                        },
+                        enabled = !sending && reply.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = AjiriwaColors.Primary),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    ) {
+                        if (sending) CircularProgressIndicator(Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                        else Text("Send", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }
             }
