@@ -27,6 +27,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -300,9 +301,24 @@ private fun extractActivationPayloadFromQr(payload: String): JSONObject? {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppUpdater.restore(this)
         setContent {
-            PSBillAppMainView()
+            PSBillTheme {
+                val update by AppUpdater.state.collectAsState()
+                if (update.mandatory) UpdateRequiredScreen()
+                else Column(Modifier.fillMaxSize().background(PSBillThemeColors.Canvas)) {
+                    UpdateBanner()
+                    Box(Modifier.weight(1f)) { PSBillAppMainView() }
+                }
+            }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Ask the server on every open: a mandatory build blocks the app right away.
+        AppUpdater.restore(this)
+        AppUpdater.checkNow(this)
     }
 }
 
@@ -316,7 +332,8 @@ fun PSBillAppMainView() {
     var selectedTab by remember { mutableStateOf("SESSIONS") } // SESSIONS, MATCHES, WIFI, SCREENS, REPORTS
     var token by remember { mutableStateOf(prefs.getString("auth_token", "") ?: "") }
     var emailInput by remember { mutableStateOf(prefs.getString("login_email", "") ?: "") }
-    var passwordInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf(SavedLogin.password(context) ?: "") }
+    var autoReloginTried by remember { mutableStateOf(false) }
     var showApiConfig by remember { mutableStateOf(false) }
     var authExpiryHandled by remember { mutableStateOf(false) }
     var showPasswordInSettings by remember { mutableStateOf(false) }
@@ -338,7 +355,7 @@ fun PSBillAppMainView() {
 
     val client = remember { OkHttpClient() }
 
-    fun loginWithCredentials(onSuccess: () -> Unit = {}) {
+    fun loginWithCredentials(onFailure: () -> Unit = {}, onSuccess: () -> Unit = {}) {
         val email = emailInput.trim().lowercase(Locale.US)
         val password = passwordInput
         if (email.isBlank() || password.isBlank()) {
@@ -361,7 +378,8 @@ fun PSBillAppMainView() {
             override fun onFailure(call: Call, e: IOException) {
                 (context as? ComponentActivity)?.runOnUiThread {
                     isLoggingIn = false
-                    Toast.makeText(context, "Login failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Could not reach the server. Check the internet and try again.", Toast.LENGTH_LONG).show()
+                    onFailure()
                 }
             }
 
@@ -375,6 +393,12 @@ fun PSBillAppMainView() {
                             obj.optString("error").ifBlank { obj.optString("message") }
                         }.getOrElse { "" }
                         Toast.makeText(context, if (err.isNotBlank()) err else "Login failed (${response.code})", Toast.LENGTH_LONG).show()
+                        if (response.code == 400 || response.code == 401 || response.code == 403) {
+                            // the saved password no longer works: forget it
+                            SavedLogin.clear(context)
+                            passwordInput = ""
+                        }
+                        onFailure()
                         return@runOnUiThread
                     }
 
@@ -392,8 +416,9 @@ fun PSBillAppMainView() {
 
                     token = tokenFromLogin
                     authExpiryHandled = false
+                    autoReloginTried = false
                     showApiConfig = false
-                    passwordInput = ""
+                    SavedLogin.save(context, password)
                     prefs.edit()
                         .putString("login_email", email)
                         .putString("auth_token", tokenFromLogin)
@@ -407,8 +432,22 @@ fun PSBillAppMainView() {
     fun logoutExpiredToken() {
         if (authExpiryHandled) return
         authExpiryHandled = true
+        // Saved password: sign back in silently once instead of showing the login screen.
+        val saved = SavedLogin.password(context)
+        if (!autoReloginTried && !saved.isNullOrBlank() && emailInput.isNotBlank()) {
+            autoReloginTried = true
+            passwordInput = saved
+            loginWithCredentials(
+                onFailure = {
+                    token = ""
+                    prefs.edit().remove("auth_token").apply()
+                },
+                onSuccess = {} // the new token restarts the refresh loop (LaunchedEffect(token, ...))
+            )
+            return
+        }
         token = ""
-        passwordInput = ""
+        passwordInput = SavedLogin.password(context) ?: ""
         nodes = emptyList()
         games = emptyList()
         vouchers = emptyList()
@@ -440,7 +479,7 @@ fun PSBillAppMainView() {
             override fun onFailure(call: Call, e: IOException) {
                 isLoading = false
                 (context as? ComponentActivity)?.runOnUiThread {
-                    Toast.makeText(context, "Unable to load screens: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Could not load screens. Check the internet.", Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -620,7 +659,7 @@ fun PSBillAppMainView() {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 (context as? ComponentActivity)?.runOnUiThread {
-                    Toast.makeText(context, "TV linking failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Could not link the TV. Check the internet and try again.", Toast.LENGTH_LONG).show()
                 }
             }
 
@@ -658,6 +697,13 @@ fun PSBillAppMainView() {
         }
     }
 
+    // Signed out but the password is saved: sign in straight away.
+    LaunchedEffect(Unit) {
+        if (token.isBlank() && emailInput.isNotBlank() && passwordInput.isNotBlank()) {
+            loginWithCredentials { fetchApiData() }
+        }
+    }
+
     if (token.isBlank()) {
         PSBillLoginScreen(
             email = emailInput,
@@ -683,18 +729,18 @@ fun PSBillAppMainView() {
                             Icon(Icons.Filled.Tv, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                         Column {
-                            Text("PSBill Enterprise", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text("Arcade Telemetry & Gaming Hub", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp)
+                            Text("PSBill", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text("Gaming lounge", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp)
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = PSBillThemeColors.Surface),
                 actions = {
                     IconButton(onClick = { showApiConfig = true }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "API settings", tint = PSBillThemeColors.PrimaryAccent)
+                        Icon(Icons.Filled.AccountCircle, contentDescription = "Account", tint = PSBillThemeColors.TextSecondary)
                     }
                     IconButton(onClick = { fetchApiData() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh API Data", tint = PSBillThemeColors.PrimaryAccent)
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = PSBillThemeColors.TextSecondary)
                     }
                 }
             )
@@ -705,7 +751,7 @@ fun PSBillAppMainView() {
                     selected = selectedTab == "SESSIONS",
                     onClick = { selectedTab = "SESSIONS" },
                     icon = { Icon(Icons.Filled.Timer, contentDescription = null) },
-                    label = { Text("Sessions", fontSize = 10.sp) },
+                    label = { Text("Sessions", fontSize = 12.sp) },
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = PSBillThemeColors.PrimaryAccent, indicatorColor = PSBillThemeColors.SurfaceAlt)
                 )
                 // Compiled-in tabs (modules.properties → CompiledModules)
@@ -714,7 +760,7 @@ fun PSBillAppMainView() {
                         selected = selectedTab == tab.key,
                         onClick = { selectedTab = tab.key },
                         icon = { Icon(tab.icon, contentDescription = null) },
-                        label = { Text(tab.label, fontSize = 10.sp) },
+                        label = { Text(tab.label, fontSize = 12.sp) },
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = PSBillThemeColors.PrimaryAccent, indicatorColor = PSBillThemeColors.SurfaceAlt)
                     )
                 }
@@ -737,7 +783,8 @@ fun PSBillAppMainView() {
                     onPairPin = { pin -> pairStationWithPin(pin) },
                     onActivateByQr = { qr -> activateByQrPayload(qr) },
                     onRefresh = { fetchApiData() },
-                    onGoHome = { selectedTab = "SESSIONS" }
+                    onGoHome = { selectedTab = "SESSIONS" },
+                    onOpenScreens = CompiledModules.features.firstOrNull { it.key == "SCREENS" }?.let { { selectedTab = "SCREENS" } },
                 )
                 else -> CompiledModules.features.firstOrNull { it.key == selectedTab }?.Content(
                     PsbillTabContext(
@@ -774,7 +821,7 @@ fun PSBillAppMainView() {
         )
         AlertDialog(
             onDismissRequest = { showApiConfig = false },
-            title = { Text("Account Sign In", color = PSBillThemeColors.TextPrimary) },
+            title = { Text("Your account", color = PSBillThemeColors.TextPrimary) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
@@ -839,12 +886,16 @@ private fun PSBillLoginScreen(
         unfocusedBorderColor = PSBillThemeColors.Border
     )
 
-    Box(
+    // Scrolls above the keyboard so the Sign in button is never hidden.
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(PSBillThemeColors.Canvas)
+            .imePadding()
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
             .padding(20.dp),
-        contentAlignment = Alignment.Center
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
@@ -856,8 +907,8 @@ private fun PSBillLoginScreen(
                 .padding(16.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("PSBill Login", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text("Sign in with CVPAP account credentials.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                Text("Sign in to PSBill", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text("Use the same email and password as the Ajiriwa dashboard.", color = PSBillThemeColors.TextSecondary, fontSize = 13.sp)
 
                 OutlinedTextField(
                     value = email,
@@ -895,7 +946,7 @@ private fun PSBillLoginScreen(
                     if (isLoading) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Login")
+                        Text("Sign in")
                     }
                 }
             }
@@ -930,7 +981,7 @@ fun LiveTickingCountdownTimer(initialSeconds: Int) {
     }
 }
 
-// 1. Sessions View (Fully Functional Station PIN Pairing & Camera QR Scanner)
+// 1. Sessions: what is playing now, what waits for payment; linking a TV is a dialog.
 @Composable
 fun PSBillSessionsView(
     nodes: List<JSONObject>,
@@ -939,10 +990,12 @@ fun PSBillSessionsView(
     onPairPin: (String) -> Unit,
     onActivateByQr: (String) -> Boolean,
     onRefresh: () -> Unit,
-    onGoHome: () -> Unit
+    onGoHome: () -> Unit,
+    onOpenScreens: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var pinInput by remember { mutableStateOf("") }
+    var showLinkDialog by remember { mutableStateOf(false) }
     var showQrScannerDialog by remember { mutableStateOf(false) }
     var hasCameraPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
@@ -957,191 +1010,127 @@ fun PSBillSessionsView(
             Toast.makeText(context, "Camera permission is required to scan QR codes.", Toast.LENGTH_SHORT).show()
         }
     }
+    fun openScanner() {
+        showLinkDialog = false
+        if (hasCameraPermission) showQrScannerDialog = true
+        else requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
 
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    val playingNodes = nodes.filter { screenStatus(it).first in setOf("PLAYING", "OVERTIME") }
+    val toPayNodes = nodes.filter { screenStatus(it).first == "TO PAY" }
+    val freeCount = nodes.count { screenStatus(it).first == "FREE" }
+    val runningTotal = playingNodes.sumOf { it.optDouble("active_billing_kes", 0.0) }
+
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            PSBillCard(title = "Station Pair & Camera Scanner") {
+            PsPageHeader("Sessions", "What is playing right now") {
+                FilledTonalButton(onClick = { showLinkDialog = true }) {
+                    Icon(Icons.Filled.AddLink, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Link a TV")
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                PsStat("Playing", "${playingNodes.size}", PsTone.Busy, Modifier.weight(1f))
+                PsStat("To pay", "${toPayNodes.size}", PsTone.Warn, Modifier.weight(1f))
+                PsStat("Free", "$freeCount", PsTone.Good, Modifier.weight(1f))
+            }
+        }
+        if (runningTotal > 0) {
+            item {
+                Text("Running bills: ${kes(runningTotal)}", color = PsTone.Good, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            }
+        }
+
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PsSectionLabel("Playing now", playingNodes.size)
+                if (isLoading) {
+                    Spacer(Modifier.width(8.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                }
+            }
+        }
+        if (playingNodes.isEmpty()) {
+            item {
+                PsEmptyState(
+                    icon = Icons.Filled.SportsEsports,
+                    title = if (nodes.isEmpty()) "No TVs linked yet" else "No one is playing",
+                    message = if (nodes.isEmpty()) "Tap Link a TV and type the PIN shown on the TV screen."
+                              else "Start a session from the Screens tab.",
+                    actionLabel = if (nodes.isEmpty()) "Link a TV" else if (onOpenScreens != null) "Open Screens" else "Refresh",
+                    onAction = if (nodes.isEmpty()) ({ showLinkDialog = true }) else (onOpenScreens ?: onRefresh),
+                )
+            }
+        } else {
+            items(playingNodes, key = { "p" + it.optString("id") }) { node ->
+                val (label, tone) = screenStatus(node)
+                val rate = node.optDouble("rate_per_minute_kes", 0.0)
+                PsListRow(
+                    title = nodeName(node),
+                    detail = listOf(nodeGame(node), if (rate > 0) "${kes(rate)}/min" else "").filter { it.isNotBlank() }.joinToString("  -  "),
+                    tone = tone, icon = Icons.Filled.SportsEsports, pill = label,
+                    trailingValue = kes(node.optDouble("active_billing_kes", 0.0)), trailingTone = PsTone.Good,
+                    onClick = onOpenScreens,
+                )
+            }
+        }
+
+        if (toPayNodes.isNotEmpty()) {
+            item { PsSectionLabel("Waiting for payment", toPayNodes.size) }
+            items(toPayNodes, key = { "e" + it.optString("id") }) { node ->
+                PsListRow(
+                    title = nodeName(node),
+                    detail = "Collect, then free the screen",
+                    tone = PsTone.Warn, icon = Icons.Filled.Payments, pill = "TO PAY",
+                    trailingValue = kes(node.optDouble("active_billing_kes", 0.0)), trailingTone = PsTone.Warn,
+                    onClick = onOpenScreens,
+                )
+            }
+        }
+    }
+
+    if (showLinkDialog) {
+        AlertDialog(
+            onDismissRequest = { showLinkDialog = false },
+            icon = { Icon(Icons.Filled.Tv, contentDescription = null) },
+            title = { Text("Link a TV") },
+            text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Enter 6-digit PIN code shown on TV screen or scan QR code:", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                    Text("Type the 6-digit PIN shown on the TV, or scan its QR code.", fontSize = 14.sp)
                     OutlinedTextField(
                         value = pinInput,
-                        onValueChange = { pinInput = it },
-                        label = { Text("Station PIN Code (e.g. 842-195)") },
+                        onValueChange = { v -> pinInput = v.filter { it.isDigit() || it == '-' }.take(7) },
+                        label = { Text("PIN") },
+                        placeholder = { Text("842-195") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 22.sp, letterSpacing = 4.sp, fontFamily = FontFamily.Monospace),
                         modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PSBillThemeColors.PrimaryAccent)
                     )
-                    BoxWithConstraints {
-                        val isCompact = maxWidth < 460.dp
-                        if (isCompact) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                Button(
-                                    onClick = {
-                                        if (pinInput.trim().isEmpty()) {
-                                            Toast.makeText(context, "Please enter a 6-digit station PIN", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            onPairPin(pinInput)
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = PSBillThemeColors.PrimaryAccent)
-                                ) {
-                                    Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Pair Station")
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        if (hasCameraPermission) {
-                                            showQrScannerDialog = true
-                                        } else {
-                                            requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PSBillThemeColors.PrimaryAccent)
-                                ) {
-                                    Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Scan QR")
-                                }
-                            }
+                    OutlinedButton(onClick = { openScanner() }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Scan QR instead")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (pinInput.count { it.isDigit() } < 6) {
+                            Toast.makeText(context, "The PIN has 6 digits", Toast.LENGTH_SHORT).show()
                         } else {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                Button(
-                                    onClick = {
-                                        if (pinInput.trim().isEmpty()) {
-                                            Toast.makeText(context, "Please enter a 6-digit station PIN", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            onPairPin(pinInput)
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(containerColor = PSBillThemeColors.PrimaryAccent)
-                                ) {
-                                    Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Pair Station")
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        if (hasCameraPermission) {
-                                            showQrScannerDialog = true
-                                        } else {
-                                            requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PSBillThemeColors.PrimaryAccent)
-                                ) {
-                                    Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Scan QR")
-                                }
-                            }
+                            showLinkDialog = false
+                            onPairPin(pinInput)
                         }
                     }
-                }
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("⏱ Live Gaming Session HUD", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = PSBillThemeColors.PrimaryAccent, strokeWidth = 2.dp)
-                }
-            }
-        }
-        val activeSessionNodes = nodes.filter { node ->
-            val status = node.optString("status", "").uppercase(Locale.US)
-            val hasGame = node.optString("current_game").isNotBlank()
-            status in setOf("ACTIVE", "OVERTIME", "PENDING") && hasGame
-        }
-        val endedSessionNodes = nodes.filter { node ->
-            node.optBoolean("has_ended_session", false)
-        }
-
-        if (activeSessionNodes.isEmpty()) {
-            item {
-                PSBillCard(title = "No Active Game Session") {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
-                        Icon(Icons.Filled.TvOff, contentDescription = null, tint = PSBillThemeColors.TextSecondary, modifier = Modifier.size(48.dp))
-                        Text("No screen currently has an active session.", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text("Sessions only appear here when a game is actually running.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
-                        OutlinedButton(onClick = onRefresh) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Refresh")
-                        }
-                    }
-                }
-            }
-        } else {
-            items(activeSessionNodes) { targetNode ->
-                val name = targetNode.optString("device_name", targetNode.optString("name", "TV Station"))
-                val status = targetNode.optString("status", "ACTIVE").uppercase(Locale.US)
-                val game = targetNode.optString("current_game", "Unknown Game")
-                val ratePerMin = targetNode.optDouble("rate_per_minute_kes", targetNode.optDouble("rate_per_minute", 0.0))
-                val runningBill = targetNode.optDouble("active_billing_kes", targetNode.optDouble("total_paid_kes", 0.0))
-                PSBillCard(title = name) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column {
-                                Text(name, color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Text("Playing: $game", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
-                            }
-                            Box(
-                                Modifier.clip(RoundedCornerShape(8.dp)).background(
-                                    if (status == "ACTIVE") PSBillThemeColors.SecondaryAccent.copy(alpha = 0.2f) else PSBillThemeColors.Crimson.copy(alpha = 0.2f)
-                                ).padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(status, color = if (status == "ACTIVE") PSBillThemeColors.SecondaryAccent else PSBillThemeColors.Crimson, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            }
-                        }
-
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Rate", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp)
-                                Text(
-                                    if (ratePerMin > 0) "KSh ${String.format("%.2f", ratePerMin)}/min" else "Not set",
-                                    color = PSBillThemeColors.TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Amount Due", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp)
-                                Text("KSh ${String.format("%.2f", runningBill)}", color = PSBillThemeColors.SecondaryAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Text("🧾 Ended Sessions Waiting Reset", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        }
-
-        if (endedSessionNodes.isEmpty()) {
-            item {
-                Text("No ended sessions pending payment/reset.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
-            }
-        } else {
-            items(endedSessionNodes) { endedNode ->
-                val name = endedNode.optString("device_name", endedNode.optString("name", "TV Station"))
-                val game = endedNode.optString("current_game").ifBlank { "No game recorded" }
-                val due = endedNode.optDouble("active_billing_kes", 0.0)
-                PSBillCard(title = name) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Session ended • payment pending/reset", color = PSBillThemeColors.Crimson, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        Text("Game: $game", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
-                        Text("Due: KSh ${String.format("%.2f", due)}", color = PSBillThemeColors.SecondaryAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("Use Screens tab to mark paid + reset this screen and make it available for next game.", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp)
-                    }
-                }
-            }
-        }
+                ) { Text("Link") }
+            },
+            dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text("Cancel") } },
+        )
     }
 
     // Camera QR Scanner Modal Dialog
