@@ -335,29 +335,24 @@ class DeviceAuthActivity : ComponentActivity() {
                     OutlinedTextField(
                         value = tvNickname,
                         onValueChange = { tvNickname = it },
-                        label = { Text("TV Nickname / Location", color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF00E676),
-                            unfocusedBorderColor = Color.Gray
-                        )
+                        label = { Text("TV Nickname / Location") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().tvFieldNav(),
+                        colors = tvFieldColors(Color(0xFF00E676)),
+                        keyboardOptions = tvKeyboardOptions(last = false),
+                        keyboardActions = tvKeyboardActions()
                     )
 
                     OutlinedTextField(
                         value = activationKey,
                         onValueChange = { activationKey = it.uppercase() },
-                        label = { Text("Activation Key (PGXXX-XXXXX-XXXXX)", color = Color.Gray) },
+                        label = { Text("Activation Key (PGXXX-XXXXX-XXXXX)") },
                         placeholder = { Text("PG7K2-A3MNQ-9TZ4W") },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF00E676),
-                            unfocusedBorderColor = Color.Gray
-                        )
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().tvFieldNav(),
+                        keyboardOptions = tvKeyboardOptions(last = true, type = KeyboardType.Ascii),
+                        keyboardActions = tvKeyboardActions(),
+                        colors = tvFieldColors(Color(0xFF00E676))
                     )
 
                     Row(

@@ -1751,8 +1751,11 @@ fun ManualStartDialog(
                             color = androidx.compose.ui.graphics.Color.LightGray, fontSize = 11.sp)
                         OutlinedTextField(
                             value = voucherCode, onValueChange = { voucherCode = it },
-                            label = { Text("Voucher Code", color = androidx.compose.ui.graphics.Color.Gray) },
-                            singleLine = true, modifier = Modifier.fillMaxWidth()
+                            label = { Text("Voucher Code") },
+                            singleLine = true, modifier = Modifier.fillMaxWidth().tvFieldNav(),
+                            colors = tvFieldColors(),
+                            keyboardOptions = tvKeyboardOptions(last = true, type = androidx.compose.ui.text.input.KeyboardType.Ascii),
+                            keyboardActions = tvKeyboardActions(),
                         )
                     }
                 }
@@ -1819,19 +1822,19 @@ fun ManualStartDialog(
                                 color = androidx.compose.ui.graphics.Color(0xFFFBBF24), fontSize = 10.sp)
                             OutlinedTextField(
                                 value = playerA, onValueChange = { playerA = it },
-                                label = { Text("Player A name", color = androidx.compose.ui.graphics.Color.Gray) },
-                                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = androidx.compose.ui.graphics.Color(0xFFFBBF24)
-                                )
+                                label = { Text("Player A name") },
+                                singleLine = true, modifier = Modifier.fillMaxWidth().tvFieldNav(),
+                                colors = tvFieldColors(androidx.compose.ui.graphics.Color(0xFFFBBF24)),
+                                keyboardOptions = tvKeyboardOptions(last = false),
+                                keyboardActions = tvKeyboardActions()
                             )
                             OutlinedTextField(
                                 value = playerB, onValueChange = { playerB = it },
-                                label = { Text("Player B name", color = androidx.compose.ui.graphics.Color.Gray) },
-                                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = androidx.compose.ui.graphics.Color(0xFFFBBF24)
-                                )
+                                label = { Text("Player B name") },
+                                singleLine = true, modifier = Modifier.fillMaxWidth().tvFieldNav(),
+                                colors = tvFieldColors(androidx.compose.ui.graphics.Color(0xFFFBBF24)),
+                                keyboardOptions = tvKeyboardOptions(last = true),
+                                keyboardActions = tvKeyboardActions()
                             )
                         }
                     }
@@ -2026,24 +2029,24 @@ fun AdminLoginDialog(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("Email Address", color = androidx.compose.ui.graphics.Color.Gray) },
+                    label = { Text("Email Address") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = androidx.compose.ui.graphics.Color(0xFF818CF8)
-                    )
+                    modifier = Modifier.fillMaxWidth().tvFieldNav(),
+                    colors = tvFieldColors(),
+                    keyboardOptions = tvKeyboardOptions(last = false, type = androidx.compose.ui.text.input.KeyboardType.Email),
+                    keyboardActions = tvKeyboardActions()
                 )
 
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password", color = androidx.compose.ui.graphics.Color.Gray) },
+                    label = { Text("Password") },
                     singleLine = true,
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = androidx.compose.ui.graphics.Color(0xFF818CF8)
-                    )
+                    modifier = Modifier.fillMaxWidth().tvFieldNav(),
+                    colors = tvFieldColors(),
+                    keyboardOptions = tvKeyboardOptions(last = true, type = androidx.compose.ui.text.input.KeyboardType.Password),
+                    keyboardActions = tvKeyboardActions()
                 )
 
                 if (errorMessage.isNotEmpty()) {
