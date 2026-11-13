@@ -171,13 +171,10 @@ class LockActivity : ComponentActivity() {
                         val candidate = payloadJson.optString(key, "").trim()
                         if (candidate.isNotEmpty()) return candidate
                     }
-                    val partnerId = payloadJson.optString("partner_id", "")
-                    if (partnerId.isNotBlank()) return prettyLabel(partnerId)
                 }
             } catch (_: Exception) {}
         }
-        val prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
-        return prettyLabel(prefs.getString("partner_id", "") ?: "")
+        return ""
     }
 
     private fun normalizeStatus(json: JSONObject): String =
@@ -261,14 +258,12 @@ class LockActivity : ComponentActivity() {
             if (devName.isNotEmpty()) {
                 deviceName = devName
             }
+            // Business name from the server; never show the raw partner id.
             val arcName = json.optCleanString("arcade_name", "")
-            if (arcName.isNotEmpty()) {
-                arcadeName = prettyLabel(arcName)
-            } else {
-                val pId = json.optCleanString("partner_id", "")
-                if (pId.isNotEmpty()) {
-                    arcadeName = prettyLabel(pId)
-                }
+            if (arcName.isNotEmpty() && arcName != arcadeName) {
+                arcadeName = arcName
+                getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
+                    .edit().putString("arcade_name", arcName).apply()
             }
 
             // Respect explicit HDMI/signal state from server when available.
@@ -457,10 +452,18 @@ class LockActivity : ComponentActivity() {
 
         fetchGamesFromServer()
         fetchAllowedApps()
+        gamesRefreshHandler.postDelayed(gamesRefreshRunnable, 60_000)
 
         setContent {
             PSBillTheme {
                 var selectedGameForStart by remember { mutableStateOf<String?>(null) }
+                val updateState by AppUpdater.state.collectAsState()
+                LaunchedEffect(updateState.ready, updateState.hint) {
+                    if (updateState.ready && !updateState.installing && !AppUpdater.installInProgress
+                        && AppUpdater.canInstall(this@LockActivity)) {
+                        AppUpdater.install(this@LockActivity)
+                    }
+                }
                 
                 LockScreenContent(
                     macAddress = macAddress,
@@ -502,7 +505,7 @@ class LockActivity : ComponentActivity() {
                 )
                 
                 selectedGameForStart?.let { gameName ->
-                    val selectedGameObj = gamesList.find { it.optString("game_name", "") == gameName }
+                    val selectedGameObj = gamesList.find { it.cleanStr("game_name", "") == gameName }
                     val isLoserPayAvailable = selectedGameObj?.optBoolean("loser_pay_available", false) ?: false
 
                     ManualStartDialog(
@@ -573,8 +576,8 @@ class LockActivity : ComponentActivity() {
         })
     }
 
-    private fun fetchGamesFromServer() {
-        isLoadingGames = true
+    private fun fetchGamesFromServer(silent: Boolean = false) {
+        if (!silent) isLoadingGames = true
         val prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
         val serverDomain = prefs.getString("server_domain", "api.ajiriwa.gidraf.dev") ?: "api.ajiriwa.gidraf.dev"
         val securePrefs = getEncryptedPrefs(this)
@@ -590,7 +593,7 @@ class LockActivity : ComponentActivity() {
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread {
                     isLoadingGames = false
-                    populateDefaultGames()
+                    if (gamesList.isEmpty()) populateDefaultGames()
                 }
             }
             override fun onResponse(call: Call, response: Response) {
@@ -950,7 +953,7 @@ class LockActivity : ComponentActivity() {
             val invoice = JSONObject(raw)
             invoiceAmount = invoice.optDouble("amount_charged_kes", invoiceAmount)
             invoiceDuration = invoice.optInt("duration_minutes", invoiceDuration)
-            invoiceGame = invoice.optString("game_name", invoiceGame)
+            invoiceGame = invoice.cleanStr("game_name", invoiceGame)
             invoiceBillingMode = invoice.optString("billing_mode", invoiceBillingMode)
             showInvoiceDialog = true
             hasEndedSession = true
@@ -963,7 +966,7 @@ class LockActivity : ComponentActivity() {
         if (showInvoice) {
             invoiceAmount = intent.getDoubleExtra("amount_charged", 0.0)
             invoiceDuration = intent.getIntExtra("duration_minutes", 0)
-            invoiceGame = intent.getStringExtra("game_name") ?: ""
+            invoiceGame = (intent.getStringExtra("game_name") ?: "").let { if (it.equals("null", true)) "" else it }
             invoiceBillingMode = intent.getStringExtra("billing_mode") ?: ""
             showInvoiceDialog = true
         }
@@ -981,6 +984,7 @@ class LockActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         isLockActivityVisible = true
+        AppUpdater.checkNow(this)
         // Race-condition guard: if KioskService restored an active session and sent ACTION_UNLOCK
         // before this activity's BroadcastReceiver was registered, we would have missed the broadcast.
         // Checking activeDeviceStatus here guarantees we always exit cleanly once the service is ready.
@@ -1008,8 +1012,8 @@ class LockActivity : ComponentActivity() {
         // If the device is still locked and something (HOME, YouTube shortcut, network panel)
         // pushed us to the background, immediately relaunch to reclaim the foreground.
         // The 300ms delay gives the system time to finish its transition before we override it.
-        if (KioskService.activeDeviceStatus == "LOCKED"
-            || KioskService.localSessionEndedPendingServerConfirm) {
+        if ((KioskService.activeDeviceStatus == "LOCKED"
+            || KioskService.localSessionEndedPendingServerConfirm) && !AppUpdater.installInProgress) {
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 // Double-check: only relaunch if we haven't been legitimately unlocked yet
                 if (KioskService.activeDeviceStatus == "LOCKED"
@@ -1023,20 +1027,21 @@ class LockActivity : ComponentActivity() {
         }
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus
-            && (KioskService.activeDeviceStatus == "LOCKED"
-                || KioskService.localSessionEndedPendingServerConfirm)) {
-            // Window lost focus (system overlay, notification panel, etc.) — bring back immediately
-            val intent = Intent(this, LockActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            }
-            startActivity(intent)
+    // No relaunch on focus loss: our own dialogs (session summary, start, admin login) take
+    // focus, and relaunching on every focus change looped the activity so it never drew a
+    // frame (black screen on lock). Being covered by another app is handled by onPause and
+    // by the KioskService watchdog.
+
+    private val gamesRefreshHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val gamesRefreshRunnable = object : Runnable {
+        override fun run() {
+            fetchGamesFromServer(silent = true)
+            gamesRefreshHandler.postDelayed(this, 60_000)
         }
     }
 
     override fun onDestroy() {
+        gamesRefreshHandler.removeCallbacks(gamesRefreshRunnable)
         isLockActivityVisible = false
         super.onDestroy()
         try {
@@ -1210,10 +1215,10 @@ fun GameCard(
     onEdit: () -> Unit = {},
     onDelete: () -> Unit = {}
 ) {
-    val gameName        = game.optString("game_name", "Unknown Game")
-    val coverImageUrl   = game.optString("cover_image_url", "")
-    val coverImageStreamUrl = game.optString("cover_image_stream_url", "")
-    val coverImageDataUrl = game.optString("cover_image_data_url", "")
+    val gameName        = game.cleanStr("game_name", "Unknown Game")
+    val coverImageUrl   = game.cleanStr("cover_image_url", "")
+    val coverImageStreamUrl = game.cleanStr("cover_image_stream_url", "")
+    val coverImageDataUrl = game.cleanStr("cover_image_data_url", "")
     val isLoserPay      = game.optBoolean("loser_pay_available", false)
 
     var isFocused by remember { mutableStateOf(false) }
@@ -1226,8 +1231,8 @@ fun GameCard(
 
     Box(
         modifier = Modifier
-            .width(180.dp)
-            .height(260.dp)
+            .width(200.dp)
+            .height(280.dp)
             .graphicsLayer(scaleX = scale, scaleY = scale)
     ) {
         Surface(
@@ -1273,9 +1278,9 @@ fun GameCard(
                         Text(
                             text = gameName,
                             color = androidx.compose.ui.graphics.Color.White,
-                            fontSize = 13.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 2, lineHeight = 17.sp
+                            maxLines = 2, lineHeight = 20.sp
                         )
                         if (isLoserPay) {
                             Text(
@@ -1287,41 +1292,6 @@ fun GameCard(
                     }
                 }
 
-                // Top-right: Edit / Delete action tray (shows when focused + Select pressed)
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isFocused,
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // Edit
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    androidx.compose.ui.graphics.Color(0xFF1D4ED8).copy(0.85f),
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .clickable { onEdit() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("✏", fontSize = 11.sp)
-                        }
-                        // Delete
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    androidx.compose.ui.graphics.Color(0xFFDC2626).copy(0.85f),
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .clickable { onDelete() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("🗑", fontSize = 11.sp)
-                        }
-                    }
-                }
             }
         }
     }
@@ -1331,7 +1301,7 @@ fun GameCard(
 fun QueueTicketRow(ticket: JSONObject) {
     val ticketNumber = ticket.optInt("ticket_number", 0)
     val playerName = ticket.optString("player_name", "Unknown Player")
-    val gameName = ticket.optString("game_name", "")
+    val gameName = ticket.cleanStr("game_name", "")
     val status = ticket.optString("status", "WAITING").uppercase(Locale.US)
 
     val isCalled = status == "CALLED"
@@ -1494,176 +1464,19 @@ fun LockScreenContent(
                 .fillMaxSize()
                 .padding(horizontal = 48.dp, vertical = 32.dp)
         ) {
-            // Realistic Lounge Header & HDMI Input Source Bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .background(androidx.compose.ui.graphics.Color(0xFF8B5CF6), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text("🎮 LOUNGE", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        }
-                        Text(
-                            text = arcadeName.ifEmpty { "BASEYA GAMING LOUNGE" },
-                            color = androidx.compose.ui.graphics.Color(0xFFF1F5F9),
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 2.sp
-                        )
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    if (hdmiConnected) androidx.compose.ui.graphics.Color(0xFF0284C7).copy(alpha = 0.25f)
-                                    else androidx.compose.ui.graphics.Color(0xFFB91C1C).copy(alpha = 0.22f),
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .border(
-                                    1.dp,
-                                    if (hdmiConnected) androidx.compose.ui.graphics.Color(0xFF38BDF8)
-                                    else androidx.compose.ui.graphics.Color(0xFFFB7185),
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                if (hdmiConnected) "HDMI LINK ACTIVE"
-                                else "HDMI SIGNAL LOST",
-                                color = if (hdmiConnected) androidx.compose.ui.graphics.Color(0xFF38BDF8)
-                                else androidx.compose.ui.graphics.Color(0xFFFDA4AF),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = deviceName,
-                            color = androidx.compose.ui.graphics.Color(0xFFCBD5E1),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text("•", color = androidx.compose.ui.graphics.Color(0xFF64748B))
-                        Text(
-                            text = if (hdmiConnected) "🟢 CONSOLE SIGNAL CONNECTED" else "🔴 HDMI NOT CONNECTED — CHECK INPUT/CABLE",
-                            color = if (hdmiConnected) androidx.compose.ui.graphics.Color(0xFF00E676) else androidx.compose.ui.graphics.Color(0xFFFB7185),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+            LockHeader(
+                arcadeName = arcadeName,
+                deviceName = deviceName,
+                hdmiConnected = hdmiConnected,
+                sessionEnded = showInvoiceDialog || hasEndedSession,
+                isAdminLoggedIn = isAdminLoggedIn,
+                onAdminClick = { if (isAdminLoggedIn) onAdminLogout() else onAdminLoginClick() }
+            )
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                androidx.compose.ui.graphics.Color(0xFF3B82F6).copy(alpha = 0.1f),
-                                RoundedCornerShape(20.dp)
-                            )
-                            .border(
-                                width = 1.5.dp,
-                                color = androidx.compose.ui.graphics.Color(0xFF3B82F6),
-                                shape = RoundedCornerShape(20.dp)
-                            )
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "TOTAL REV: KES ${totalRevenue.toInt()}",
-                            color = androidx.compose.ui.graphics.Color(0xFF38BDF8),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-                    }
-
-                    val (badgeText, badgeColor) = remember(showInvoiceDialog) {
-                        if (showInvoiceDialog) {
-                            "SESSION ENDED" to androidx.compose.ui.graphics.Color(0xFFEF4444)
-                        } else {
-                            "READY TO PLAY" to androidx.compose.ui.graphics.Color(0xFF00E676)
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                badgeColor.copy(alpha = 0.1f),
-                                RoundedCornerShape(20.dp)
-                            )
-                            .border(
-                                width = 1.5.dp,
-                                color = badgeColor,
-                                shape = RoundedCornerShape(20.dp)
-                            )
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(badgeColor, RoundedCornerShape(4.dp))
-                            )
-                            Text(
-                                text = badgeText,
-                                color = badgeColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            )
-                        }
-                    }
-
-                    // Admin Login/Logout Button
-                    var isAdminBtnFocused by remember { mutableStateOf(false) }
-                    Button(
-                        onClick = {
-                            if (isAdminLoggedIn) {
-                                onAdminLogout()
-                            } else {
-                                onAdminLoginClick()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isAdminLoggedIn) androidx.compose.ui.graphics.Color(0xFFDC2626)
-                                             else if (isAdminBtnFocused) androidx.compose.ui.graphics.Color(0xFF4F46E5)
-                                             else androidx.compose.ui.graphics.Color(0xFF312E81),
-                            contentColor = androidx.compose.ui.graphics.Color.White
-                        ),
-                        modifier = Modifier
-                            .onFocusChanged { isAdminBtnFocused = it.isFocused }
-                            .border(
-                                width = 1.5.dp,
-                                color = if (isAdminBtnFocused) androidx.compose.ui.graphics.Color.White
-                                        else if (isAdminLoggedIn) androidx.compose.ui.graphics.Color(0xFFEF4444)
-                                        else androidx.compose.ui.graphics.Color(0xFF4338CA),
-                                shape = RoundedCornerShape(20.dp)
-                            ),
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = if (isAdminLoggedIn) "ADMIN LOGOUT" else "ADMIN LOGIN",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-                    }
-                }
-            }
-
-            if (isAdminLoggedIn) {
+            val update by AppUpdater.state.collectAsState()
+            if (update.mandatory) {
+                UpdateRequiredPanel(update)
+            } else if (isAdminLoggedIn) {
                 AdminDashboardContent(
                     totalRevenue = totalRevenue,
                     recentSessions = recentSessions,
@@ -1727,7 +1540,7 @@ fun LockScreenContent(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = endedSessionGame,
+                                text = endedSessionGame.ifBlank { "Gaming session" },
                                 color = androidx.compose.ui.graphics.Color.White,
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.ExtraBold
@@ -1841,255 +1654,16 @@ fun LockScreenContent(
 
                 }
             } else {
-                if (deviceBillingMode == "PREPAID") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(32.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        // Left: Game Selection (weight 1.8f)
-                        Column(
-                            modifier = Modifier.weight(1.8f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Text(
-                                text = "SELECT A GAME TO START",
-                                color = androidx.compose.ui.graphics.Color(0xFF38BDF8),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 2.sp
-                            )
-
-                            if (isLoading) {
-                                Box(
-                                    modifier = Modifier
-                                        .height(260.dp)
-                                        .fillMaxWidth(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = androidx.compose.ui.graphics.Color(0xFF00E676),
-                                        modifier = Modifier.size(48.dp)
-                                    )
-                                }
-                            } else if (games.isEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .height(260.dp)
-                                        .fillMaxWidth(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "No games available",
-                                        color = androidx.compose.ui.graphics.Color.Gray,
-                                        fontSize = 16.sp
-                                    )
-                                }
-                            } else {
-                                LazyRow(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                                    contentPadding = PaddingValues(horizontal = 16.dp)
-                                ) {
-                                    items(games) { game ->
-                                        GameCard(
-                                            game = game,
-                                            onClick = {
-                                                val gName = game.optString("game_name", "")
-                                                if (gName.isNotEmpty()) onGameSelect(gName)
-                                            },
-                                            onEdit = { onGameEdit(game) },
-                                            onDelete = { onGameDelete(game) }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Right: Waiting Queue (weight 1.2f)
-                        Column(
-                            modifier = Modifier
-                                .weight(1.2f)
-                                .height(280.dp)
-                                .background(androidx.compose.ui.graphics.Color(0xFF0F172A).copy(alpha = 0.8f), RoundedCornerShape(16.dp))
-                                .border(1.5.dp, androidx.compose.ui.graphics.Color(0xFF1E293B), RoundedCornerShape(16.dp))
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = "WAITING QUEUE",
-                                color = androidx.compose.ui.graphics.Color(0xFF38BDF8),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 2.sp
-                            )
-
-                            if (queueTickets.isEmpty()) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "Queue is empty",
-                                        color = androidx.compose.ui.graphics.Color(0xFF64748B),
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            } else {
-                                LazyColumn(
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    items(queueTickets) { ticket ->
-                                        QueueTicketRow(ticket)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "SELECT A GAME TO START",
-                            color = androidx.compose.ui.graphics.Color(0xFF38BDF8),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 2.sp
-                        )
-
-                        if (isLoading) {
-                            Box(
-                                modifier = Modifier
-                                    .height(260.dp)
-                                    .fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    color = androidx.compose.ui.graphics.Color(0xFF00E676),
-                                    modifier = Modifier.size(48.dp)
-                                )
-                            }
-                        } else if (games.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .height(260.dp)
-                                    .fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "No games available",
-                                    color = androidx.compose.ui.graphics.Color.Gray,
-                                    fontSize = 16.sp
-                                )
-                            }
-                        } else {
-                            LazyRow(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(24.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp)
-                            ) {
-                                items(games) { game ->
-                                    GameCard(
-                                        game = game,
-                                        onClick = {
-                                            val gName = game.optString("game_name", "")
-                                            if (gName.isNotEmpty()) onGameSelect(gName)
-                                        },
-                                        onEdit = { onGameEdit(game) },
-                                        onDelete = { onGameDelete(game) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                ReadyToPlayContent(
+                    games = games,
+                    isLoading = isLoading,
+                    queueTickets = queueTickets,
+                    billingMode = deviceBillingMode,
+                    onGameSelect = onGameSelect
+                )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(24.dp)
-                    ) {
-                        Column {
-                            Text("MAC Address", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp)
-                            Text(macAddress, color = androidx.compose.ui.graphics.Color(0xFFCBD5E1), fontSize = 12.sp)
-                        }
-                        Column {
-                            Text("IP Address", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp)
-                            Text(ipAddress, color = androidx.compose.ui.graphics.Color(0xFFCBD5E1), fontSize = 12.sp)
-                        }
-                    }
-
-                    Text(
-                        text = "Use remote controller D-Pad to navigate & Select key to start",
-                        color = androidx.compose.ui.graphics.Color(0xFF64748B),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                if (recentSessions.isNotEmpty()) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    ) {
-                        Text(
-                            text = "RECENT SESSIONS",
-                            color = androidx.compose.ui.graphics.Color(0xFF38BDF8),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-                        recentSessions.take(3).forEach { session ->
-                            Row(
-                                modifier = Modifier
-                                    .background(androidx.compose.ui.graphics.Color(0xFF1E293B).copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                                    .width(280.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(
-                                        text = session.optString("game_name", "Game"),
-                                        color = androidx.compose.ui.graphics.Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "${session.optInt("duration_minutes", 0)} mins • ${session.optString("billing_mode", "POSTPAID")}",
-                                        color = androidx.compose.ui.graphics.Color.Gray,
-                                        fontSize = 9.sp
-                                    )
-                                }
-                                Text(
-                                    text = "KES ${session.optDouble("amount_charged_kes", 0.0).toInt()}",
-                                    color = androidx.compose.ui.graphics.Color(0xFF00E676),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            LockFooter(macAddress = macAddress, ipAddress = ipAddress)
         }
     }
 }
@@ -2628,7 +2202,7 @@ fun AdminDashboardContent(
                 }
 
                 items(gamesPlayedAnalytics) { game ->
-                    val gName = game.optString("game_name", "Unknown Game")
+                    val gName = game.cleanStr("game_name", "Unknown Game")
                     val sessions = game.optInt("session_count", 0)
                     val minutes = game.optInt("total_minutes", 0)
                     val revenue = game.optDouble("total_revenue", 0.0)

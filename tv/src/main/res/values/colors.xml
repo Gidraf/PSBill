@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shown while a screen is starting, instead of a black flash -->
+    <color name="lock_bg">#FF0B1020</color>
+</resources>

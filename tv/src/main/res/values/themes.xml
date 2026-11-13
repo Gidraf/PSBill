@@ -1,4 +1,7 @@
 <resources>
 
-    <style name="Theme.PSBill" parent="Theme.AppCompat.DayNight.NoActionBar" />
+    <style name="Theme.PSBill" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/lock_bg</item>
+        <item name="android:windowDisablePreview">false</item>
+    </style>
 </resources>

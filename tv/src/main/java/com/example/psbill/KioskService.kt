@@ -277,7 +277,21 @@ class KioskService : Service() {
         })
     }
 
+    private var updateCheckJob: Job? = null
+
+    private fun startUpdateChecks() {
+        AppUpdater.restore(this)
+        updateCheckJob?.cancel()
+        updateCheckJob = serviceScope.launch {
+            while (true) {
+                AppUpdater.checkNow(this@KioskService)
+                delay(30 * 60_000L)
+            }
+        }
+    }
+
     private fun startAuthenticatedRuntime(prefs: android.content.SharedPreferences) {
+        startUpdateChecks()
         connectWebSocket()
         startTokenVerificationLoop()
         startSyncStateLoop()
@@ -1057,12 +1071,12 @@ class KioskService : Service() {
                             put("loser_pay_token", loserPayToken)
                             put("qr_link", qrLink)
                             put("billing_mode", data.optString("billing_mode", "POSTPAID"))
-                            put("current_game", data.optString("game_name", "FIFA"))
+                            put("current_game", data.cleanStr("game_name", "FIFA"))
                             
                             val lpObj = JSONObject().apply {
                                 put("player_a", loserPayPlayerA.value)
                                 put("player_b", loserPayPlayerB.value)
-                                put("game_name", data.optString("game_name", "FIFA"))
+                                put("game_name", data.cleanStr("game_name", "FIFA"))
                                 put("status", status)
                                 put("is_supervised", isSupervised)
                             }
@@ -1453,7 +1467,7 @@ class KioskService : Service() {
                 putExtra("show_invoice", true)
                 putExtra("amount_charged", invoiceJson.optDouble("amount_charged_kes", 0.0))
                 putExtra("duration_minutes", invoiceJson.optInt("duration_minutes", 0))
-                putExtra("game_name", invoiceJson.optString("game_name", ""))
+                putExtra("game_name", invoiceJson.cleanStr("game_name", ""))
                 putExtra("billing_mode", invoiceJson.optString("billing_mode", ""))
             }
         }
@@ -1469,7 +1483,7 @@ class KioskService : Service() {
                 lockScreenWatchdogHandler = null
                 return
             }
-            if (!LockActivity.isLockActivityVisible) {
+            if (!LockActivity.isLockActivityVisible && !AppUpdater.installInProgress) {
                 // Lock screen was pushed to background (HOME, YouTube, network panel, etc.)
                 Log.w(TAG, "Watchdog: lock screen not visible while device is LOCKED — relaunching")
                 val relaunch = Intent(this@KioskService, LockActivity::class.java).apply {
@@ -2545,7 +2559,8 @@ class KioskService : Service() {
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.OPAQUE
         ).apply {
-            screenBrightness = 0.01f
+            // dim, not off: 0.01 made the "how to wake" text unreadable
+            screenBrightness = 0.15f
         }
 
         val lifecycleOwner = CustomLifecycleOwner()
@@ -2557,10 +2572,10 @@ class KioskService : Service() {
             setViewTreeSavedStateRegistryOwner(CustomSavedStateRegistryOwner())
 
             setContent {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black)
+                val prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
+                SleepScreen(
+                    arcadeName = prefs.getString("arcade_name", "") ?: "",
+                    deviceName = prefs.getString("device_name", "") ?: "",
                 )
             }
         }
