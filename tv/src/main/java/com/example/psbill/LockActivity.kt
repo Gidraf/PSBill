@@ -468,10 +468,17 @@ class LockActivity : ComponentActivity() {
             PSBillTheme {
                 var selectedGameForStart by remember { mutableStateOf<String?>(null) }
                 val updateState by AppUpdater.state.collectAsState()
-                LaunchedEffect(updateState.ready, updateState.hint) {
+                // Install an update only when the screen is IDLE: locked, no bill on screen,
+                // no staff logged in, and it has stayed that way for 2 minutes. Any change
+                // (a session starts, a bill shows) cancels the wait. A playing session is
+                // never interrupted: this screen is not shown while someone plays.
+                LaunchedEffect(updateState.ready, updateState.hint, showInvoiceDialog, hasEndedSession, isAdminLoggedIn) {
+                    fun idle() = isLockActivityVisible && !showInvoiceDialog && !hasEndedSession && !isAdminLoggedIn
+                        && KioskService.activeDeviceStatus == "LOCKED"
                     if (updateState.ready && !updateState.installing && !AppUpdater.installInProgress
-                        && AppUpdater.canInstall(this@LockActivity)) {
-                        AppUpdater.install(this@LockActivity)
+                        && AppUpdater.canInstall(this@LockActivity) && idle()) {
+                        kotlinx.coroutines.delay(UPDATE_IDLE_MS)
+                        if (idle() && !AppUpdater.installInProgress) AppUpdater.install(this@LockActivity)
                     }
                 }
                 
@@ -1146,6 +1153,8 @@ class LockActivity : ComponentActivity() {
 
     companion object {
         var isLockActivityVisible = false
+        /** How long the lock screen must stay idle before an update installs. */
+        private const val UPDATE_IDLE_MS = 120_000L
     }
 }
 

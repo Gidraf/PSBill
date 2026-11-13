@@ -207,7 +207,13 @@ object AppUpdater {
             try {
                 val pi = c.packageManager.packageInstaller
                 val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-                    .apply { setAppPackageName(c.packageName) }
+                    .apply {
+                        setAppPackageName(c.packageName)
+                        // Android 12+: once this app installed itself, later updates need no OK
+                        // on the remote (the first one still asks, the TV's installer of record
+                        // was the browser).
+                        if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                    }
                 val id = pi.createSession(params)
                 pi.openSession(id).use { s ->
                     s.openWrite("update.apk", 0, f.length()).use { o -> f.inputStream().use { it.copyTo(o) }; s.fsync(o) }
