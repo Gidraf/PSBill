@@ -238,6 +238,13 @@ fun PSBillScreensConfigView(
     var openNodeId by remember { mutableStateOf<String?>(null) }
     val openNode = nodes.firstOrNull { it.optString("id") == openNodeId }
 
+    // While a screen is open and running, refresh every 5 s so the time left / bill is
+    // live (the main list refreshes only every 25 s). Between refreshes LiveBill ticks.
+    val openLive = openNode != null && screenStatus(openNode).first in setOf("PLAYING", "OVERTIME")
+    LaunchedEffect(openNodeId, openLive) {
+        while (openLive) { delay(5_000); onRefresh() }
+    }
+
     if (openNode != null) {
         BackHandler { openNodeId = null }
         ScreenDetail(
@@ -288,7 +295,8 @@ fun PSBillScreensConfigView(
             onStartFromTicket = { ticket ->
                 postScreenAction(openNode, "start", JSONObject().apply {
                     put("current_game", ticket.optString("game_name"))
-                    put("billing_mode", selectedBillingByNode[openNode.optString("id")].orEmpty().let { if (it == "PREPAID") it else "POSTPAID" })
+                    // Pay-first needs the amount from the Control tab; from the queue it is pay-after.
+                    put("billing_mode", "POSTPAID")
                     put("queue_ticket_id", ticket.optString("id"))
                 }, "Session started for #${ticket.optInt("ticket_number")}")
             },
@@ -595,15 +603,20 @@ private fun ScreenControl(
     val rate = node.optDouble("rate_per_minute_kes", 0.0)
     var confirmSleep by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
+    var showTopup by remember { mutableStateOf(false) }
+    var paidAmount by remember(node.optString("id")) { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when (label) {
             "PLAYING", "OVERTIME" -> PsSurface {
                 Text("Now playing", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
                 Text(nodeGame(node).ifBlank { "Game session" }, color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PsStat("Bill so far", kes(due), PsTone.Good, Modifier.weight(1f))
-                    PsStat("Rate", if (rate > 0) "${kes(rate)}/min" else "-", PSBillThemeColors.TextPrimary, Modifier.weight(1f))
+                LiveBill(node)
+                if (isPrepaid(node)) {
+                    Button(
+                        onClick = { showTopup = true }, enabled = !busy, modifier = Modifier.fillMaxWidth().height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PsTone.Good)
+                    ) { Icon(Icons.Filled.AddCircle, null); Spacer(Modifier.width(8.dp)); Text("Top up time") }
                 }
                 Button(
                     onClick = { confirmEnd = true }, enabled = !busy, modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -660,19 +673,26 @@ private fun ScreenControl(
                         ) { Text(text, maxLines = 1, fontSize = 13.sp) }
                     }
                 }
+                val game = selectedGame.ifBlank { options.firstOrNull().orEmpty() }
+                val gameRate = games.firstOrNull { it.optString("game_name") == game }
+                    ?.optDouble("base_rate_per_minute", 0.0)?.takeIf { it > 0 } ?: rate
                 if (selectedBilling == "LOSER") {
                     LoserPayPlayersFields(playerA, { playerA = it }, playerB, { playerB = it })
                 }
+                if (selectedBilling == "PREPAID") {
+                    AmountToMinutes(paidAmount, { paidAmount = it }, gameRate, "Amount paid (KSh)")
+                }
+                val amount = paidAmount.toDoubleOrNull() ?: 0.0
                 Button(
                     onClick = {
-                        val game = selectedGame.ifBlank { options.firstOrNull().orEmpty() }
                         if (selectedBilling == "LOSER") { onLoserStart(game, playerA, playerB); return@Button }
                         onAction("start", JSONObject().apply {
                             put("current_game", game)
                             put("billing_mode", selectedBilling)
-                        }, "Session started on $name")
+                            if (selectedBilling == "PREPAID") put("amount_kes", amount)
+                        }, if (selectedBilling == "PREPAID") "$name: ${minutesText(amount, gameRate)} started" else "Session started on $name")
                     },
-                    enabled = !busy && label != "OFFLINE",
+                    enabled = !busy && label != "OFFLINE" && (selectedBilling != "PREPAID" || amount > 0),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PsTone.Good)
                 ) { Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (selectedBilling == "LOSER") "Start match" else "Start session") }
@@ -701,6 +721,30 @@ private fun ScreenControl(
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep playing") } },
         )
     }
+    if (showTopup) {
+        var topup by remember { mutableStateOf("") }
+        val topupAmount = topup.toDoubleOrNull() ?: 0.0
+        AlertDialog(
+            onDismissRequest = { showTopup = false },
+            title = { Text("Top up $name") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Take the money first. The minutes are added to the time left.", color = PSBillThemeColors.TextSecondary, fontSize = 13.sp)
+                    AmountToMinutes(topup, { topup = it }, rate, "Amount paid (KSh)")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = topupAmount > 0 && rate > 0,
+                    onClick = {
+                        showTopup = false
+                        onAction("topup", JSONObject().put("amount_kes", topupAmount), "Added ${minutesText(topupAmount, rate)} on $name")
+                    }
+                ) { Text("Add time") }
+            },
+            dismissButton = { TextButton(onClick = { showTopup = false }) { Text("Cancel") } },
+        )
+    }
     if (confirmSleep) {
         AlertDialog(
             onDismissRequest = { confirmSleep = false },
@@ -711,5 +755,79 @@ private fun ScreenControl(
             },
             dismissButton = { TextButton(onClick = { confirmSleep = false }) { Text("Cancel") } },
         )
+    }
+}
+
+
+private fun isPrepaid(node: JSONObject) = node.optString("billing_mode").uppercase(Locale.US) == "PREPAID"
+
+/** "20 min" / "2 min 30 s" for an amount at a price per minute. */
+private fun minutesText(amount: Double, rate: Double): String {
+    if (rate <= 0 || amount <= 0) return "0 min"
+    val secs = Math.round(amount / rate * 60).toInt()
+    val m = secs / 60; val s = secs % 60
+    return if (s == 0) "$m min" else "$m min $s s"
+}
+
+private fun clock(totalSecs: Int): String {
+    val t = maxOf(0, totalSecs)
+    val h = t / 3600; val m = (t % 3600) / 60; val s = t % 60
+    return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s) else String.format(Locale.US, "%02d:%02d", m, s)
+}
+
+/** Amount field that shows how many minutes it buys at the game's price. */
+@Composable
+private fun AmountToMinutes(value: String, onChange: (String) -> Unit, rate: Double, label: String) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { v -> onChange(v.filter { it.isDigit() || it == '.' }.take(7)) },
+        label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+    )
+    val amount = value.toDoubleOrNull() ?: 0.0
+    Text(
+        when {
+            rate <= 0 -> "This game has no price per minute yet - set it on the dashboard."
+            amount <= 0 -> "${kes(rate)} per minute"
+            else -> "= ${minutesText(amount, rate)} of play (${kes(rate)}/min)"
+        },
+        color = if (rate <= 0) PsTone.Bad else PsTone.Good, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+    )
+}
+
+/**
+ * Time left (pay first) or bill so far (pay after), ticking every second between the
+ * server refreshes. The TV is the timer authority; each refresh re-bases this.
+ */
+@Composable
+private fun LiveBill(node: JSONObject) {
+    val key = node.toString()
+    var ticks by remember(key) { mutableIntStateOf(0) }
+    LaunchedEffect(key) { while (true) { delay(1_000); ticks++ } }
+    val rate = node.optDouble("rate_per_minute_kes", 0.0)
+    val overtime = node.optString("status").uppercase(Locale.US) == "OVERTIME"
+    val total = node.optDouble("active_billing_kes", 0.0)
+    if (isPrepaid(node)) {
+        val left = if (overtime) 0 else node.optInt("seconds_remaining") - ticks
+        val over = node.optInt("seconds_elapsed_overtime") + if (overtime) ticks else 0
+        val runningOut = !overtime && left in 1..120
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (overtime) PsStat("Overtime", clock(over), PsTone.Warn, Modifier.weight(1f))
+            else PsStat("Time left", clock(left), if (runningOut) PsTone.Warn else PsTone.Good, Modifier.weight(1f))
+            PsStat(if (overtime) "Paid + extra" else "Paid", kes(total), PSBillThemeColors.TextPrimary, Modifier.weight(1f))
+        }
+        when {
+            overtime -> Text("Time is up. Overtime is ${kes(rate)}/min - top up or end the session.", color = PsTone.Warn, fontSize = 13.sp)
+            runningOut -> Text("Less than 2 minutes left.", color = PsTone.Warn, fontSize = 13.sp)
+        }
+    } else {
+        val elapsed = node.optInt("seconds_elapsed") + node.optInt("seconds_elapsed_overtime") + ticks
+        val minCharge = node.optDouble("minimum_charge_kes", 0.0)
+        val bill = maxOf(total, minCharge, elapsed / 60.0 * rate)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PsStat("Bill so far", kes(Math.round(bill).toDouble()), PsTone.Good, Modifier.weight(1f))
+            PsStat("Playing for", clock(elapsed), PSBillThemeColors.TextPrimary, Modifier.weight(1f))
+        }
+        Text(if (rate > 0) "${kes(rate)}/min, at least ${kes(minCharge)}" else "", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
     }
 }

@@ -133,6 +133,8 @@ class KioskService : Service() {
             field = value
             activeDeviceStatus = value
         }
+    // Server's top-up counter we have applied (sent with every sync).
+    private var lastTopupSeq = 0
     private var localSecondsRemaining = 0
     private var localSecondsElapsed = 0
     private var localSecondsElapsedOvertime = 0
@@ -1247,7 +1249,15 @@ class KioskService : Service() {
         }
         val wasLive = oldStatus == "ACTIVE" || oldStatus == "OVERTIME"
         val isLive = deviceStatus == "ACTIVE" || deviceStatus == "OVERTIME"
-        if (wasLive && isLive) {
+        val serverTopupSeq = data.optInt("topup_seq", lastTopupSeq)
+        if (wasLive && isLive && serverTopupSeq > lastTopupSeq) {
+            // A top-up was paid: jump to the new time left at once (drifting toward it
+            // one second at a time would take ages). Overtime already played stays billed.
+            localSecondsRemaining = data.optInt("seconds_remaining")
+            remainingDrift = 0
+            lastTopupSeq = serverTopupSeq
+            Log.d(TAG, "Top-up applied: ${localSecondsRemaining}s left")
+        } else if (wasLive && isLive) {
             // Same session still running on screen — local ticker stays authoritative.
             // Never snap the visible number to the server's value (that looks like a
             // jump/hurry). Just note the difference; the ticker will nudge toward it
@@ -1258,6 +1268,7 @@ class KioskService : Service() {
         } else {
             // Session boundary (start, end, pause/resume) — nothing is visibly ticking
             // yet, so it's safe (and correct) to snap exactly to the server's value.
+            lastTopupSeq = serverTopupSeq
             localSecondsRemaining = data.optInt("seconds_remaining")
             localSecondsElapsed = data.optInt("seconds_elapsed")
             localSecondsElapsedOvertime = data.optInt("seconds_elapsed_overtime")
@@ -1344,7 +1355,8 @@ class KioskService : Service() {
                 "&active_billing_kes=$billingKes" +
                 "&current_game=${java.net.URLEncoder.encode(curGame, "UTF-8")}" +
                 "&hdmi_connected=$hdmiConnectedFlag" +
-                "&uptime_seconds=$uptimeSeconds"
+                "&uptime_seconds=$uptimeSeconds" +
+                "&topup_seq=$lastTopupSeq"
         
         val securePrefs = getEncryptedPrefs(this)
         val token = securePrefs.getString("auth_token", "") ?: ""
