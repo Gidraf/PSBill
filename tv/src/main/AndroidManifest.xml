@@ -66,6 +66,16 @@
             android:excludeFromRecents="true"
             android:exported="true" />
 
+        <!-- Covers the HDMI input while the console is off, so the TV's no-signal
+             countdown never puts the TV to sleep (see ConsoleOffActivity) -->
+        <activity
+            android:name=".ConsoleOffActivity"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:stateNotNeeded="true"
+            android:theme="@style/Theme.PSBill"
+            android:exported="false" />
+
         <!-- Standalone crash recovery — no dependencies on app state -->
         <activity
             android:name=".CrashRecoveryActivity"

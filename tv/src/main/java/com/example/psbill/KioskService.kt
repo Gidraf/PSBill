@@ -180,6 +180,20 @@ class KioskService : Service() {
     private var billingMode = "POSTPAID"
     private var currentGame: String? = null
     private var localHdmiConnected = true
+    // Console watch: the HDMI input in use and its state (TvInputManager.INPUT_STATE_*;
+    // -1 = not known, e.g. a box without TV inputs).
+    private var hdmiInputId: String? = null
+    private var hdmiNumber = 1
+    private var hdmiState = -1
+    private var consoleOffSince = 0L
+    private var hdmiCallback: android.media.tv.TvInputManager.TvInputCallback? = null
+    private val hdmiWatchHandler = Handler(Looper.getMainLooper())
+    private val hdmiWatchRunnable = object : Runnable {
+        override fun run() {
+            checkConsole()
+            hdmiWatchHandler.postDelayed(this, HDMI_POLL_MS)
+        }
+    }
     private val isAdminMode = mutableStateOf(false)
     private var tokenVerifyJob: Job? = null
     private var screenWakeReceiver: BroadcastReceiver? = null
@@ -238,6 +252,10 @@ class KioskService : Service() {
         // delivered within this window, it's stale and must be discarded rather than replayed
         // on the next reconnect (replaying it later could silently re-start a stopped session).
         private const val STALE_START_EVENT_TTL_MS = 15_000L
+        private const val HDMI_POLL_MS = 5_000L
+        // Console off this long during a session -> cover the HDMI input (the TV's own
+        // no-signal countdown is much longer, so a quick console restart is not covered).
+        private const val CONSOLE_OFF_GRACE_MS = 20_000L
         var mediaProjection: MediaProjection? = null
         var streamEncoder: StreamEncoder? = null
         var activeDeviceStatus: String = "LOCKED"
@@ -261,6 +279,9 @@ class KioskService : Service() {
         val prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
         serverDomain = prefs.getString("server_domain", "https://api.ajiriwa.gidraf.dev") ?: "https://api.ajiriwa.gidraf.dev"
         localHdmiConnected = prefs.getBoolean("hdmi_connected", true)
+        hdmiNumber = prefs.getInt("hdmi_input_number", 1)
+        hdmiInputId = prefs.getString(ConsoleOffActivity.KEY_INPUT_ID, null)
+        startConsoleWatch()
         val tokenPartnerId = getKioskPartnerId()
         partnerId = if (tokenPartnerId != "default_partner") tokenPartnerId else (prefs.getString("partner_id", "default_partner") ?: "default_partner")
         verifyStartupRegistration(prefs)
@@ -1401,6 +1422,7 @@ class KioskService : Service() {
                 "&active_billing_kes=$billingKes" +
                 "&current_game=${java.net.URLEncoder.encode(curGame, "UTF-8")}" +
                 "&hdmi_connected=$hdmiConnectedFlag" +
+                "&console_state=${consoleStateName()}" +
                 "&uptime_seconds=$uptimeSeconds" +
                 "&topup_seq=$lastTopupSeq" +
                 "&queued_overtime_seconds=$queuedOvertimeSecs"
@@ -1632,58 +1654,144 @@ class KioskService : Service() {
         prefs.edit().putBoolean("hdmi_connected", isConnected).apply()
     }
 
-    private fun launchHdmiInput(hdmiNumber: Int = 1) {
-        try {
-            val tvInputManager = getSystemService(Context.TV_INPUT_SERVICE) as? android.media.tv.TvInputManager
-            if (tvInputManager != null) {
-                val inputList = tvInputManager.tvInputList
-                var hdmiInputId: String? = null
-                var hdmiCount = 0
-                for (info in inputList) {
-                    Log.d(TAG, "TV Input found: id=${info.id}, type=${info.type}")
-                    if (info.type == android.media.tv.TvInputInfo.TYPE_HDMI || info.id.contains("hdmi", ignoreCase = true)) {
-                        hdmiCount++
-                        if (hdmiCount == hdmiNumber) {
-                            hdmiInputId = info.id
-                            break
-                        }
-                    }
-                }
-                // Fall back to first HDMI port if the requested one wasn't found
-                if (hdmiInputId == null) {
-                    for (info in inputList) {
-                        if (info.type == android.media.tv.TvInputInfo.TYPE_HDMI || info.id.contains("hdmi", ignoreCase = true)) {
-                            hdmiInputId = info.id
-                            break
-                        }
-                    }
-                }
-                
-                if (hdmiInputId != null) {
-                    val uri = android.media.tv.TvContract.buildChannelUriForPassthroughInput(hdmiInputId)
-                    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    startActivity(intent)
-                    updateLocalHdmiConnected(true)
-                    Log.d(TAG, "Launched HDMI input #$hdmiNumber: $hdmiInputId")
-                    return
-                }
+    /** The id of HDMI input #number (1-based), else the first HDMI input; null without TV inputs. */
+    private fun resolveHdmiInputId(number: Int): String? {
+        return try {
+            val tim = getSystemService(Context.TV_INPUT_SERVICE) as? android.media.tv.TvInputManager ?: return null
+            val hdmi = tim.tvInputList.filter {
+                it.type == android.media.tv.TvInputInfo.TYPE_HDMI || it.id.contains("hdmi", ignoreCase = true)
             }
+            (hdmi.getOrNull(number - 1) ?: hdmi.firstOrNull())?.id
         } catch (e: Exception) {
-            updateLocalHdmiConnected(false)
-            Log.e(TAG, "Failed to launch TvInput HDMI: ${e.message}")
+            Log.w(TAG, "TV inputs unavailable: ${e.message}")
+            null
         }
-        
-        // Fallback: Try launching common HDMI/TV system intents
+    }
+
+    private fun launchHdmiInput(number: Int = 1) {
+        hdmiNumber = number
+        val id = resolveHdmiInputId(number)
+        if (id != null) {
+            hdmiInputId = id
+            getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE).edit()
+                .putInt("hdmi_input_number", number)
+                .putString(ConsoleOffActivity.KEY_INPUT_ID, id)
+                .apply()
+            try {
+                val uri = android.media.tv.TvContract.buildChannelUriForPassthroughInput(id)
+                startActivity(Intent(Intent.ACTION_VIEW, uri).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK })
+                Log.d(TAG, "Launched HDMI input #$number: $id")
+                checkConsole()
+                return
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch TvInput HDMI: ${e.message}")
+            }
+        }
+        // Fallback: the generic passthrough intent
         try {
             val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("content://android.media.tv/passthrough"))
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
             Log.d(TAG, "Launched fallback TV intent content://android.media.tv/passthrough")
         } catch (e: Exception) {
-            updateLocalHdmiConnected(false)
+            if (hdmiState < 0) updateLocalHdmiConnected(false)
             Log.e(TAG, "All HDMI launch fallbacks failed: ${e.message}")
+        }
+    }
+
+    // ── Console watch ─────────────────────────────────────────────────────────
+    // hdmi_connected used to mean "we managed to open the HDMI input". It now comes from the
+    // input's real state: signal (console on), standby (cable in, console off/asleep) or
+    // unplugged. While a session runs with the console off, ConsoleOffActivity covers the
+    // input so the TV's no-signal countdown never puts it to sleep.
+
+    private fun consoleStateName(): String = when (hdmiState) {
+        android.media.tv.TvInputManager.INPUT_STATE_CONNECTED -> "on"
+        android.media.tv.TvInputManager.INPUT_STATE_CONNECTED_STANDBY -> "standby"
+        android.media.tv.TvInputManager.INPUT_STATE_DISCONNECTED -> "unplugged"
+        else -> "unknown"
+    }
+
+    private fun startConsoleWatch() {
+        val tim = getSystemService(Context.TV_INPUT_SERVICE) as? android.media.tv.TvInputManager ?: return
+        if (hdmiCallback == null) {
+            val cb = object : android.media.tv.TvInputManager.TvInputCallback() {
+                override fun onInputStateChanged(inputId: String, state: Int) {
+                    if (inputId == (hdmiInputId ?: return)) onConsoleState(state)
+                }
+            }
+            try {
+                tim.registerCallback(cb, hdmiWatchHandler)
+                hdmiCallback = cb
+            } catch (e: Exception) {
+                Log.w(TAG, "TV input callback unavailable: ${e.message}")
+            }
+        }
+        hdmiWatchHandler.removeCallbacks(hdmiWatchRunnable)
+        hdmiWatchHandler.postDelayed(hdmiWatchRunnable, HDMI_POLL_MS)
+    }
+
+    private fun stopConsoleWatch() {
+        hdmiWatchHandler.removeCallbacks(hdmiWatchRunnable)
+        val cb = hdmiCallback ?: return
+        try {
+            (getSystemService(Context.TV_INPUT_SERVICE) as? android.media.tv.TvInputManager)?.unregisterCallback(cb)
+        } catch (_: Exception) {}
+        hdmiCallback = null
+    }
+
+    private fun checkConsole() {
+        val tim = getSystemService(Context.TV_INPUT_SERVICE) as? android.media.tv.TvInputManager ?: return
+        val id = hdmiInputId ?: resolveHdmiInputId(hdmiNumber)?.also { hdmiInputId = it } ?: return
+        val state = try { tim.getInputState(id) } catch (e: Exception) { return }
+        onConsoleState(state)
+    }
+
+    private fun sessionOnScreen(): Boolean =
+        deviceStatus != "LOCKED" && deviceStatus != "PENDING" &&
+            !localSessionEndedPendingServerConfirm && !LockActivity.isLockActivityVisible
+
+    private fun onConsoleState(state: Int) {
+        if (state != hdmiState) {
+            Log.d(TAG, "Console state ${consoleStateName()} -> $state")
+            hdmiState = state
+            val on = state == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED
+            if (on != localHdmiConnected) updateLocalHdmiConnected(on)
+        }
+        val inSession = sessionOnScreen()
+        if (state == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED) {
+            consoleOffSince = 0L
+            if (ConsoleOffActivity.isOpen()) {
+                val wasInFront = ConsoleOffActivity.isResumedNow
+                ConsoleOffActivity.close()
+                // Back to the game, unless the TV already switched (the console's one-touch play)
+                if (wasInFront && inSession && !isSleeping) launchHdmiInput(hdmiNumber)
+            }
+            return
+        }
+        if (!inSession) {
+            consoleOffSince = 0L
+            // the session ended: the lock screen is in front, drop the page behind it
+            if (ConsoleOffActivity.isOpen() && !ConsoleOffActivity.isResumedNow) ConsoleOffActivity.close()
+            return
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (consoleOffSince == 0L) consoleOffSince = now
+        if (now - consoleOffSince < CONSOLE_OFF_GRACE_MS || ConsoleOffActivity.isResumedNow) return
+        val snoozeUntil = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
+            .getLong(ConsoleOffActivity.KEY_SNOOZE_UNTIL, 0L)
+        if (System.currentTimeMillis() < snoozeUntil) return
+        showConsoleCover()
+    }
+
+    private fun showConsoleCover() {
+        try {
+            Log.d(TAG, "Console off during a session: covering the HDMI input")
+            startActivity(Intent(this, ConsoleOffActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Unable to show the console page: ${e.message}")
         }
     }
 
@@ -2167,6 +2275,8 @@ class KioskService : Service() {
                 if (action != Intent.ACTION_SCREEN_ON && action != Intent.ACTION_USER_PRESENT) return
                 if (deviceStatus == "LOCKED" || localSessionEndedPendingServerConfirm) {
                     launchLockScreen(null)
+                } else {
+                    checkConsole()
                 }
             }
         }
@@ -2231,6 +2341,7 @@ class KioskService : Service() {
         } catch (e: Exception) {}
         reconnectHandler.removeCallbacksAndMessages(null)
         unregisterScreenWakeReceiver()
+        stopConsoleWatch()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -2753,7 +2864,10 @@ class KioskService : Service() {
                 @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    // our "sleep" is a dim page: the TV itself must stay on, or the
+                    // dashboard can no longer wake it (no network in real standby)
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
             PixelFormat.OPAQUE
         ).apply {
             // dim, not off: 0.01 made the "how to wake" text unreadable

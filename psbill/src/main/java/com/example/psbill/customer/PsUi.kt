@@ -228,9 +228,13 @@ fun PsEmptyState(
 fun screenStatus(node: org.json.JSONObject): Pair<String, Color> {
     val status = node.optString("status", "LOCKED").uppercase()
     val online = !node.has("is_online") || node.optBoolean("is_online", true)
+    // the TV reports its HDMI input: "standby"/"unplugged" = the console is off during a session
+    val console = node.optString("console_state", "").lowercase()
+    val consoleOff = console == "standby" || console == "unplugged"
     return when {
         node.optBoolean("is_asleep", false) -> "ASLEEP" to PsTone.Idle
         !online -> "OFFLINE" to PsTone.Bad
+        consoleOff && status in setOf("ACTIVE", "OVERTIME", "PENDING") -> "CONSOLE OFF" to PsTone.Warn
         status == "OVERTIME" -> "OVERTIME" to PsTone.Warn
         status == "ACTIVE" || status == "PENDING" -> "PLAYING" to PsTone.Busy
         node.optBoolean("has_ended_session", false) -> "TO PAY" to PsTone.Warn
