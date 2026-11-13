@@ -85,6 +85,8 @@ fun PSBillScreensConfigView(
     var detailError by remember { mutableStateOf<String?>(null) }
     var loadingDetails by remember { mutableStateOf(false) }
     var actionNodeId by remember { mutableStateOf<String?>(null) }
+    var activeMatch by remember { mutableStateOf<JSONObject?>(null) }
+    val api = remember(token) { PsApi(context, client, serverHost, token, onTokenExpired) }
     val selectedGameByNode = remember { mutableStateMapOf<String, String>() }
     val selectedBillingByNode = remember { mutableStateMapOf<String, String>() }
     var sessionsDateFilter by remember { mutableStateOf("") }
@@ -102,11 +104,9 @@ fun PSBillScreensConfigView(
     fun loadScreenDetails(node: JSONObject, requestedPage: Int = sessionsPage) {
         val nodeId = node.optString("id")
         if (nodeId.isBlank()) return
-        val game = selectedGameByNode[nodeId]
-            ?: node.optString("current_game").ifBlank { games.firstOrNull()?.optString("game_name").orEmpty() }
-
         queueTickets = emptyList()
         recentSessions = emptyList()
+        activeMatch = null
         detailError = null
         loadingDetails = true
 
@@ -116,36 +116,17 @@ fun PSBillScreensConfigView(
             if (pending <= 0) loadingDetails = false
         }
 
-        val queueUrl = "$serverHost/api/v1/kiosk/devices/$nodeId/queue?game_name=${Uri.encode(game)}"
-        client.newCall(Request.Builder().url(queueUrl).build()).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                (context as? ComponentActivity)?.runOnUiThread {
-                    detailError = "Could not load the queue. Check the internet, then tap refresh."
-                    completeOne()
-                }
+        // Every waiting / called person for this screen, all games (the old call showed one game only).
+        api.get("/api/v1/kiosk/queue/tickets?device_id=${Uri.encode(nodeId)}") { code, body ->
+            if (code in 200..299) {
+                queueTickets = parseObjects(body).filter { it.optString("status").uppercase(Locale.US) in setOf("WAITING", "CALLED") }
+            } else {
+                detailError = if (code == 0) "Could not load the queue. Check the internet, then tap refresh."
+                              else "Could not load the queue (error $code)."
             }
-
-            override fun onResponse(call: Call, response: Response) {
-                val body = response.body?.string() ?: "{}"
-                (context as? ComponentActivity)?.runOnUiThread {
-                    if (response.code == 401 || response.code == 403) {
-                        onTokenExpired()
-                        completeOne()
-                        return@runOnUiThread
-                    }
-                    if (response.isSuccessful) {
-                        val obj = runCatching { JSONObject(body) }.getOrElse { JSONObject() }
-                        val ticketsArray = obj.optJSONObject("queue")?.optJSONArray("tickets") ?: JSONArray()
-                        val list = mutableListOf<JSONObject>()
-                        for (i in 0 until ticketsArray.length()) list.add(ticketsArray.getJSONObject(i))
-                        queueTickets = list
-                    } else {
-                        detailError = "Could not load the queue (error ${response.code})."
-                    }
-                    completeOne()
-                }
-            }
-        })
+            completeOne()
+        }
+        LoserPayActions.active(api, nodeId) { activeMatch = it }
 
         if (token.isBlank()) {
             detailError = "Sign in again to see the session history."
@@ -280,6 +261,60 @@ fun PSBillScreensConfigView(
             pages = sessionsPages,
             total = sessionsTotal,
             onPage = { p -> sessionsPage = p; loadScreenDetails(openNode, requestedPage = p) },
+            activeMatch = activeMatch,
+            onQueueStatus = { ticket, status, message ->
+                actionNodeId = openNode.optString("id")
+                api.post("/api/v1/kiosk/queue/tickets/${ticket.optString("id")}/status", JSONObject().put("status", status)) { code, body ->
+                    actionNodeId = null
+                    if (code in 200..299) { api.toast(message); loadScreenDetails(openNode) }
+                    else api.toast(api.errorText(code, body, "Could not update the queue"))
+                }
+            },
+            onCallNext = {
+                val next = queueTickets.firstOrNull { it.optString("status").uppercase(Locale.US) == "WAITING" }
+                if (next == null) api.toast("No one is waiting")
+                else {
+                    actionNodeId = openNode.optString("id")
+                    api.post("/api/v1/kiosk/queue/next", JSONObject().put("device_id", openNode.optString("id")).put("game_name", next.optString("game_name"))) { code, body ->
+                        actionNodeId = null
+                        if (code in 200..299) {
+                            val t = runCatching { JSONObject(body).optJSONObject("next_ticket") }.getOrNull()
+                            api.toast(if (t != null) "Called #${t.optInt("ticket_number")} ${t.optString("player_name").takeIf { it.isNotBlank() && it != "null" }.orEmpty()}" else "No one is waiting")
+                            loadScreenDetails(openNode)
+                        } else api.toast(api.errorText(code, body, "Could not call the next person"))
+                    }
+                }
+            },
+            onStartFromTicket = { ticket ->
+                postScreenAction(openNode, "start", JSONObject().apply {
+                    put("current_game", ticket.optString("game_name"))
+                    put("billing_mode", selectedBillingByNode[openNode.optString("id")].orEmpty().let { if (it == "PREPAID") it else "POSTPAID" })
+                    put("queue_ticket_id", ticket.optString("id"))
+                }, "Session started for #${ticket.optInt("ticket_number")}")
+            },
+            onLoserStart = { game, a, b ->
+                actionNodeId = openNode.optString("id")
+                LoserPayActions.start(api, openNode.optString("id"), game, a, b) { ok ->
+                    actionNodeId = null
+                    if (ok) { onRefresh(); loadScreenDetails(openNode) }
+                }
+            },
+            onRound = { winner ->
+                activeMatch?.let { m ->
+                    actionNodeId = openNode.optString("id")
+                    LoserPayActions.round(api, m, winner) { actionNodeId = null; loadScreenDetails(openNode) }
+                }
+            },
+            onEndMatch = {
+                activeMatch?.let { m ->
+                    actionNodeId = openNode.optString("id")
+                    LoserPayActions.end(api, m) { ok ->
+                        actionNodeId = null
+                        // Ending the match does not lock the screen on its own.
+                        if (ok) postScreenAction(openNode, "stop", JSONObject(), "${nodeName(openNode)} locked")
+                    }
+                }
+            },
             queueForm = {
                 QueueWithWifiForm(
                     deviceId = openNode.optString("id"),
@@ -374,9 +409,17 @@ private fun ScreenDetail(
     pages: Int,
     total: Int,
     onPage: (Int) -> Unit,
+    activeMatch: JSONObject?,
+    onQueueStatus: (JSONObject, String, String) -> Unit,
+    onCallNext: () -> Unit,
+    onStartFromTicket: (JSONObject) -> Unit,
+    onLoserStart: (String, String, String) -> Unit,
+    onRound: (String?) -> Unit,
+    onEndMatch: () -> Unit,
     queueForm: @Composable () -> Unit,
 ) {
     val name = nodeName(node)
+    var ticketForActions by remember { mutableStateOf<JSONObject?>(null) }
     val (label, tone) = screenStatus(node)
     var tab by remember { mutableStateOf(0) }
     val tabs = listOf("Control", "Queue (${queueTickets.size})", "History")
@@ -410,21 +453,39 @@ private fun ScreenDetail(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             when (tab) {
                 0 -> item {
-                    ScreenControl(node, label, games, busy, selectedGame, onGameChange, selectedBilling, onBillingChange, onAction)
+                    if (activeMatch != null) {
+                        LoserPayMatchCard(activeMatch, null, busy, onRound, onEndMatch)
+                    } else {
+                        ScreenControl(node, label, games, busy, selectedGame, onGameChange, selectedBilling, onBillingChange, onAction, onLoserStart)
+                    }
                 }
                 1 -> {
-                    item { PsSectionLabel("Waiting", queueTickets.size) }
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { PsSectionLabel("Waiting", queueTickets.size) }
+                            FilledTonalButton(onClick = onCallNext, enabled = !busy && queueTickets.any { it.optString("status").uppercase(Locale.US) == "WAITING" }) {
+                                Icon(Icons.Filled.Campaign, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Call next")
+                            }
+                        }
+                    }
                     if (queueTickets.isEmpty()) {
                         item { Text("No one is waiting for this screen.", color = PSBillThemeColors.TextSecondary, fontSize = 13.sp) }
                     } else {
                         items(queueTickets) { t ->
                             val who = t.optString("player_name").takeIf { it.isNotBlank() && it != "null" }
                                 ?: t.optString("player_phone").takeIf { it.isNotBlank() && it != "null" } ?: "Walk-in"
+                            val st = t.optString("status", "WAITING").uppercase(Locale.US)
+                            val wait = t.optInt("estimated_wait_minutes", 0)
                             PsListRow(
                                 title = "#${t.optInt("ticket_number", 0)}  $who",
-                                detail = t.optString("game_name").takeIf { it.isNotBlank() && it != "null" }.orEmpty(),
-                                tone = PsTone.Busy,
-                                pill = t.optString("status", "WAITING").uppercase(Locale.US),
+                                detail = listOf(
+                                    t.optString("game_name").takeIf { it.isNotBlank() && it != "null" }.orEmpty(),
+                                    if (st == "WAITING" && wait > 0) "about $wait min" else "",
+                                    t.optString("wifi_voucher_code").takeIf { it.isNotBlank() && it != "null" }?.let { "WiFi $it" }.orEmpty(),
+                                ).filter { it.isNotBlank() }.joinToString("  -  "),
+                                tone = if (st == "CALLED") PsTone.Good else PsTone.Busy,
+                                pill = st,
+                                onClick = { ticketForActions = t },
                             )
                         }
                     }
@@ -476,6 +537,41 @@ private fun ScreenDetail(
             }
         }
     }
+    ticketForActions?.let { t ->
+        val who = t.optString("player_name").takeIf { it.isNotBlank() && it != "null" }
+            ?: t.optString("player_phone").takeIf { it.isNotBlank() && it != "null" } ?: "Walk-in"
+        val num = t.optInt("ticket_number", 0)
+        val free = label == "FREE"
+        AlertDialog(
+            onDismissRequest = { ticketForActions = null },
+            title = { Text("#$num  $who") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(t.optString("game_name").takeIf { it.isNotBlank() && it != "null" } ?: "", color = PSBillThemeColors.TextSecondary)
+                    Button(
+                        onClick = { ticketForActions = null; onStartFromTicket(t) },
+                        enabled = free && !busy, modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = PsTone.Good)
+                    ) { Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Start their session now") }
+                    if (!free) Text("The screen is busy. Start their session when it is free.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                    if (t.optString("status").uppercase(Locale.US) == "WAITING") {
+                        OutlinedButton(onClick = { ticketForActions = null; onQueueStatus(t, "CALLED", "Called #$num") }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Call them (show on the TV)")
+                        }
+                    }
+                    OutlinedButton(onClick = { ticketForActions = null; onQueueStatus(t, "SKIPPED", "#$num skipped") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Skip - not here")
+                    }
+                    OutlinedButton(
+                        onClick = { ticketForActions = null; onQueueStatus(t, "CANCELLED", "#$num removed") }, modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PsTone.Bad)
+                    ) { Text("Remove from queue") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { ticketForActions = null }) { Text("Close") } },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -490,9 +586,12 @@ private fun ScreenControl(
     selectedBilling: String,
     onBillingChange: (String) -> Unit,
     onAction: (String, JSONObject, String) -> Unit,
+    onLoserStart: (String, String, String) -> Unit,
 ) {
     val name = nodeName(node)
     val due = node.optDouble("active_billing_kes", 0.0)
+    var playerA by remember { mutableStateOf("") }
+    var playerB by remember { mutableStateOf("") }
     val rate = node.optDouble("rate_per_minute_kes", 0.0)
     var confirmSleep by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
@@ -553,17 +652,21 @@ private fun ScreenControl(
                 }
                 Text("How they pay", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf("POSTPAID" to "Pay after", "PREPAID" to "Pay first").forEachIndexed { i, (mode, text) ->
+                    listOf("POSTPAID" to "Pay after", "PREPAID" to "Pay first", "LOSER" to "Loser pays").forEachIndexed { i, (mode, text) ->
                         SegmentedButton(
                             selected = selectedBilling == mode,
                             onClick = { onBillingChange(mode) },
-                            shape = SegmentedButtonDefaults.itemShape(i, 2),
-                        ) { Text(text) }
+                            shape = SegmentedButtonDefaults.itemShape(i, 3),
+                        ) { Text(text, maxLines = 1, fontSize = 13.sp) }
                     }
+                }
+                if (selectedBilling == "LOSER") {
+                    LoserPayPlayersFields(playerA, { playerA = it }, playerB, { playerB = it })
                 }
                 Button(
                     onClick = {
                         val game = selectedGame.ifBlank { options.firstOrNull().orEmpty() }
+                        if (selectedBilling == "LOSER") { onLoserStart(game, playerA, playerB); return@Button }
                         onAction("start", JSONObject().apply {
                             put("current_game", game)
                             put("billing_mode", selectedBilling)
@@ -572,7 +675,7 @@ private fun ScreenControl(
                     enabled = !busy && label != "OFFLINE",
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PsTone.Good)
-                ) { Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Start session") }
+                ) { Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (selectedBilling == "LOSER") "Start match" else "Start session") }
                 if (label == "OFFLINE") {
                     Text("The TV is not connected. Check its power and WiFi.", color = PsTone.Bad, fontSize = 12.sp)
                 }
