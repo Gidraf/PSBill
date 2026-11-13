@@ -9,6 +9,8 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -42,6 +44,9 @@ class ConsoleOffActivity : ComponentActivity() {
         /** System.currentTimeMillis() until which the service must not reopen this page. */
         const val KEY_SNOOZE_UNTIL = "console_cover_snooze_until"
         const val SNOOZE_MS = 45_000L
+        /** Staff/player pressed OK: trust them (some TVs report "standby" with a picture on screen)
+         *  and do not cover again until the input's state changes. Cleared by KioskService. */
+        const val KEY_TRUST_ON = "console_cover_trust_on"
 
         @Volatile var isResumedNow = false
             private set
@@ -58,7 +63,7 @@ class ConsoleOffActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         current = WeakReference(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setContent { ConsoleOffScreen() }
+        setContent { ConsoleOffScreen(onOk = ::backToGame) }
     }
 
     override fun onResume() {
@@ -76,20 +81,26 @@ class ConsoleOffActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        when (keyCode) {
+    // dispatchKeyEvent, not onKeyDown: the Compose view sees keys first and may keep OK.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
-            KeyEvent.KEYCODE_BUTTON_A -> { backToGame(); return true }
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_SPACE -> {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) backToGame()
+                return true
+            }
             // Back would drop to the TV's HDMI screen and start its countdown again.
             KeyEvent.KEYCODE_BACK -> return true
         }
-        return super.onKeyDown(keyCode, event)
+        return super.dispatchKeyEvent(event)
     }
 
     /** "The console is on": open the HDMI input and give it a moment to show a picture. */
-    private fun backToGame() {
+    fun backToGame() {
+        if (isFinishing) return
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.edit().putLong(KEY_SNOOZE_UNTIL, System.currentTimeMillis() + SNOOZE_MS).apply()
+        prefs.edit().putLong(KEY_SNOOZE_UNTIL, System.currentTimeMillis() + SNOOZE_MS)
+            .putBoolean(KEY_TRUST_ON, true).apply()
         val inputId = prefs.getString(KEY_INPUT_ID, null)
         try {
             val uri = if (inputId != null) android.media.tv.TvContract.buildChannelUriForPassthroughInput(inputId)
@@ -102,7 +113,9 @@ class ConsoleOffActivity : ComponentActivity() {
 }
 
 @androidx.compose.runtime.Composable
-private fun ConsoleOffScreen() {
+private fun ConsoleOffScreen(onOk: () -> Unit) {
+    val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Box(
         Modifier.fillMaxSize().background(Color(0xFF0B0F19)),
         contentAlignment = Alignment.Center
@@ -121,7 +134,9 @@ private fun ConsoleOffScreen() {
             )
             Spacer(Modifier.height(36.dp))
             Box(
-                Modifier.background(Color(0xFF4F46E5), RoundedCornerShape(14.dp))
+                Modifier.focusRequester(focus)
+                    .clickable(onClick = onOk)
+                    .background(Color(0xFF4F46E5), RoundedCornerShape(14.dp))
                     .padding(horizontal = 28.dp, vertical = 14.dp)
             ) {
                 Text("Console is on? Press OK", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)

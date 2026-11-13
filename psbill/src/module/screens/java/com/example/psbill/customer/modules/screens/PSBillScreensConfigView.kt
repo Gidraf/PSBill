@@ -1057,11 +1057,12 @@ private fun PricingRulesDialog(
     }
     var rushOn by remember(current) { mutableStateOf(current?.optBoolean("rush_hours_enabled") == true) }
     var rush by remember(current) { mutableStateOf(current?.optString("rush_hours").orEmpty().ifBlank { "17:00-22:00" }) }
+    var speed by remember(current) { mutableStateOf(current?.optInt("wifi_speed_mbps", 5)?.toString() ?: "5") }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
-        title = { Text("Prices & rush hours") },
+        title = { Text("Prices, rush hours & WiFi speed") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -1097,6 +1098,13 @@ private fun PricingRulesDialog(
                 if (current?.optBoolean("rush_hour_now") == true) {
                     Text("It is rush hour now.", color = PsTone.Warn, fontSize = 13.sp)
                 }
+                OutlinedTextField(
+                    speed, { speed = it.filter(Char::isDigit).take(3) }, singleLine = true,
+                    label = { Text("Free WiFi speed (Mbps per player)") },
+                    supportingText = { Text("Every free WiFi pass (queue, after playing). Paid WiFi keeps its own speed.") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
                 error?.let { Text(it, color = PsTone.Bad, fontSize = 13.sp) }
             }
         },
@@ -1108,6 +1116,7 @@ private fun PricingRulesDialog(
                     put("overtime_rate_per_minute", ot.toDoubleOrNull() ?: 0.0)
                     put("rush_hours_enabled", rushOn)
                     put("rush_hours", rush.trim())
+                    put("wifi_speed_mbps", speed.toIntOrNull() ?: 5)
                 }
                 onSave(body) { err -> saving = false; error = err }
             }) { Text(if (saving) "Saving..." else "Save") }

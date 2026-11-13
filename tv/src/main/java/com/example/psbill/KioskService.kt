@@ -1771,9 +1771,13 @@ class KioskService : Service() {
             !localSessionEndedPendingServerConfirm && !LockActivity.isLockActivityVisible
 
     private fun onConsoleState(state: Int) {
+        val previous = hdmiState
         if (state != hdmiState) {
             Log.d(TAG, "Console state ${consoleStateName()} -> $state")
             hdmiState = state
+            // a real change (cable, console power): stop trusting an earlier "console is on" OK
+            getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE).edit()
+                .remove(ConsoleOffActivity.KEY_TRUST_ON).apply()
             val on = state == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED
             if (on != localHdmiConnected) updateLocalHdmiConnected(on)
         }
@@ -1788,6 +1792,19 @@ class KioskService : Service() {
             }
             return
         }
+        // Cable plugged back in: many TVs only see the picture once the input is open, so
+        // open it now instead of waiting for OK (the cover comes back if it stays dark).
+        if (previous == android.media.tv.TvInputManager.INPUT_STATE_DISCONNECTED && inSession && !isSleeping &&
+            ConsoleOffActivity.isOpen()) {
+            Log.d(TAG, "HDMI cable back: opening the input")
+            getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE).edit()
+                .putLong(ConsoleOffActivity.KEY_SNOOZE_UNTIL, System.currentTimeMillis() + ConsoleOffActivity.SNOOZE_MS)
+                .apply()
+            consoleOffSince = 0L
+            ConsoleOffActivity.close()
+            launchHdmiInput(hdmiNumber)
+            return
+        }
         if (!inSession) {
             consoleOffSince = 0L
             // the session ended: the lock screen is in front, drop the page behind it
@@ -1797,9 +1814,10 @@ class KioskService : Service() {
         val now = android.os.SystemClock.elapsedRealtime()
         if (consoleOffSince == 0L) consoleOffSince = now
         if (now - consoleOffSince < CONSOLE_OFF_GRACE_MS || ConsoleOffActivity.isResumedNow) return
-        val snoozeUntil = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
-            .getLong(ConsoleOffActivity.KEY_SNOOZE_UNTIL, 0L)
-        if (System.currentTimeMillis() < snoozeUntil) return
+        val prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
+        if (System.currentTimeMillis() < prefs.getLong(ConsoleOffActivity.KEY_SNOOZE_UNTIL, 0L)) return
+        // OK was pressed and nothing changed since: the TV says standby but the player sees the game
+        if (prefs.getBoolean(ConsoleOffActivity.KEY_TRUST_ON, false)) return
         showConsoleCover()
     }
 
