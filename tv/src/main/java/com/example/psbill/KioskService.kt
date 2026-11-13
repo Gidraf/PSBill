@@ -1452,8 +1452,10 @@ class KioskService : Service() {
                                 localSessionEndedPendingServerConfirm = false
                                 removeTimerOverlay()
                                 if (oldStatus != "LOCKED") {
-                                    val lastInvoice = data.optJSONObject("last_invoice")
-                                    lockDevice(lastInvoice)
+                                    // last_invoice is the last SAVED session log, usually the
+                                    // previous session (this one is saved when the bill is cleared).
+                                    // Use the bill of the session that just ended instead.
+                                    lockDevice(endedInvoiceFrom(data) ?: data.optJSONObject("last_invoice"))
                                 }
                             } else if (localSessionEndedPendingServerConfirm) {
                                 // TV ended the session locally but server hasn't processed the stop yet.
@@ -1476,6 +1478,20 @@ class KioskService : Service() {
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
+    /** The bill of the session that just ended, from the device state the server sent. */
+    private fun endedInvoiceFrom(data: JSONObject): JSONObject? {
+        if (!data.optBoolean("has_ended_session", false)) return null
+        val amount = data.optDouble("active_billing_kes", 0.0)
+        if (amount.isNaN() || amount <= 0) return null
+        val secs = data.optInt("seconds_elapsed", 0) + data.optInt("seconds_elapsed_overtime", 0)
+        return JSONObject().apply {
+            put("amount_charged_kes", amount)
+            put("duration_minutes", maxOf(1, Math.round(secs / 60.0).toInt()))
+            put("game_name", data.cleanStr("current_game", ""))
+            put("billing_mode", data.optString("billing_mode", ""))
+        }
+    }
+
     private fun lockDevice(invoiceJson: JSONObject? = null) {
         val shouldPersistEndedInvoice = invoiceJson != null ||
             localSessionEndedPendingServerConfirm ||
