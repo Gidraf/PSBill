@@ -135,6 +135,10 @@ class LockActivity : ComponentActivity() {
     private var endedSessionAmount by mutableStateOf(0.0)
     private var endedSessionGame by mutableStateOf("")
     private var endedSessionBillingMode by mutableStateOf("")
+    // Pay-first top-up from the lock screen: price now and the staff's answer
+    private var topupRatePerMin by mutableStateOf(0.0)
+    private var topupPricier by mutableStateOf(false)
+    private var topupMessage by mutableStateOf<String?>(null)
     private var endedSessionLoserPay by mutableStateOf(false)
     private val endedSessionRounds = mutableStateListOf<JSONObject>()
     private var endedSessionStart by mutableStateOf("")
@@ -248,6 +252,18 @@ class LockActivity : ComponentActivity() {
             totalRevenue = json.optDouble("total_revenue", 0.0)
             
             val serverHasEnded = deriveHasEndedSession(json)
+            // Top-up price: the overtime price while someone waits or in rush hours
+            val baseRate = json.optDouble("rate_per_minute_kes", 0.0).let { if (it.isNaN()) 0.0 else it }
+            val otRate = json.optDouble("overtime_rate_per_minute_kes", 0.0).let { if (it.isNaN()) 0.0 else it }
+            val waiting = json.optJSONObject("queue")?.optInt("waiting_count", 0) ?: 0
+            topupPricier = (waiting > 0 || json.optBoolean("rush_hour", false)) && otRate > baseRate
+            topupRatePerMin = if (topupPricier) otRate else baseRate
+            json.optJSONObject("topup_request")?.let { r ->
+                when (r.optString("status")) {
+                    "PENDING" -> topupMessage = "Request sent: +${r.optInt("minutes")} min = KES ${r.optDouble("amount_kes", 0.0).toInt()}. Pay the staff - the game comes back when they approve."
+                    "DECLINED" -> if (topupMessage != null) topupMessage = "Top-up not approved - talk to the staff."
+                }
+            }
             // Only show the ended-session panel if the user hasn't already acknowledged it.
             // Once acknowledged it stays hidden until a brand new session ends.
             if (serverHasEnded && !endedSessionAcknowledged) {
@@ -571,7 +587,12 @@ class LockActivity : ComponentActivity() {
                         duration = invoiceDuration,
                         game = invoiceGame,
                         billingMode = invoiceBillingMode,
-                        onDismiss = {}
+                        onDismiss = {},
+                        topupRate = topupRatePerMin,
+                        topupPricier = topupPricier,
+                        topupMessage = topupMessage,
+                        onRequestTopup = if (invoiceBillingMode.equals("PREPAID", true) || endedSessionBillingMode.equals("PREPAID", true))
+                            { mins: Int -> requestTopup(mins) } else null,
                     )
                 }
 
@@ -663,6 +684,41 @@ class LockActivity : ComponentActivity() {
                             populateDefaultGames()
                         }
                     }
+                }
+            }
+        })
+    }
+
+    /** The player asks for more time after the pay-first time ran out; staff approve it. */
+    private fun requestTopup(minutes: Int) {
+        val prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
+        val serverDomain = prefs.getString("server_domain", "api.ajiriwa.gidraf.dev") ?: "api.ajiriwa.gidraf.dev"
+        val token = getEncryptedPrefs(this).getString("auth_token", "") ?: ""
+        val id = getKioskDeviceId()
+        if (id.isEmpty()) { topupMessage = "Ask the staff to add time"; return }
+        topupMessage = "Sending..."
+        val body = JSONObject().put("minutes", minutes).toString()
+            .toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("https://${serverDomain.removePrefix("https://").removePrefix("http://").trimEnd('/')}/api/v1/kiosk/devices/$id/topup-request")
+            .header("Authorization", "Bearer $token")
+            .header("X-Device-Fingerprint", DeviceIdentity.fingerprint(this))
+            .post(body)
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread { topupMessage = "No connection - ask the staff" }
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val text = it.body?.string().orEmpty()
+                    val msg = if (it.isSuccessful) {
+                        val r = try { JSONObject(text).optJSONObject("topup_request") } catch (_: Exception) { null }
+                        "Request sent: +${r?.optInt("minutes") ?: minutes} min = KES ${(r?.optDouble("amount_kes", 0.0) ?: 0.0).toInt()}. Pay the staff - the game comes back when they approve."
+                    } else {
+                        (try { JSONObject(text).optString("error") } catch (_: Exception) { "" }).ifBlank { "Could not send - ask the staff" }
+                    }
+                    runOnUiThread { topupMessage = msg }
                 }
             }
         })
@@ -1952,7 +2008,11 @@ fun SessionSummaryDialog(
     duration: Int,
     game: String,
     billingMode: String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    topupRate: Double = 0.0,
+    topupPricier: Boolean = false,
+    topupMessage: String? = null,
+    onRequestTopup: ((Int) -> Unit)? = null,
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -2044,12 +2104,57 @@ fun SessionSummaryDialog(
                     }
                 }
 
+                if (onRequestTopup != null && topupRate > 0) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(androidx.compose.ui.graphics.Color(0xFF0B2545), RoundedCornerShape(10.dp))
+                            .border(1.dp, androidx.compose.ui.graphics.Color(0xFF38BDF8), RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Keep playing? Add time", color = androidx.compose.ui.graphics.Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        val rateText = if (topupRate % 1.0 == 0.0) topupRate.toInt().toString() else String.format(java.util.Locale.US, "%.1f", topupRate)
+                        Text(
+                            if (topupPricier) "KES $rateText/min - overtime price, someone is waiting or rush hour"
+                            else "KES $rateText/min. If someone is waiting for this screen, the overtime price applies.",
+                            color = androidx.compose.ui.graphics.Color(0xFFBAE6FD), fontSize = 11.sp
+                        )
+                        if (topupMessage != null) {
+                            Text(topupMessage, color = androidx.compose.ui.graphics.Color(0xFFFDE68A), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            listOf(15, 30, 60).forEachIndexed { i, mins ->
+                                var focused by remember { mutableStateOf(false) }
+                                Button(
+                                    onClick = { onRequestTopup(mins) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (focused) androidx.compose.ui.graphics.Color(0xFF0284C7) else androidx.compose.ui.graphics.Color(0xFF075985),
+                                        contentColor = androidx.compose.ui.graphics.Color.White
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .then(if (i == 0) Modifier.focusRequester(focusRequester) else Modifier)
+                                        .onFocusChanged { focused = it.isFocused }
+                                        .border(2.dp, if (focused) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(10.dp)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("+$mins min", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("KES ${(topupRate * mins).toInt()}", fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(focusRequester)
+                        .then(if (onRequestTopup != null && topupRate > 0) Modifier else Modifier.focusRequester(focusRequester))
                         .border(1.dp, androidx.compose.ui.graphics.Color(0xFF334155), RoundedCornerShape(10.dp))
                         .background(androidx.compose.ui.graphics.Color(0xFF0F172A), RoundedCornerShape(10.dp))
                         .padding(horizontal = 12.dp, vertical = 10.dp),

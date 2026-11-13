@@ -1016,7 +1016,7 @@ fun PSBillSessionsView(
         else requestPermissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    val playingNodes = nodes.filter { screenStatus(it).first in setOf("PLAYING", "OVERTIME") }
+    val playingNodes = nodes.filter { screenStatus(it).first in setOf("PLAYING", "OVERTIME", "WANTS TIME", "CONSOLE OFF") }
     val toPayNodes = nodes.filter { screenStatus(it).first == "TO PAY" }
     val freeCount = nodes.count { screenStatus(it).first == "FREE" }
     val runningTotal = playingNodes.sumOf { it.optDouble("active_billing_kes", 0.0) }

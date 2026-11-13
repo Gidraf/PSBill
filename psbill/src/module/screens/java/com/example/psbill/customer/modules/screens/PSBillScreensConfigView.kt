@@ -214,7 +214,7 @@ fun PSBillScreensConfigView(
                         return@runOnUiThread
                     }
                     if (response.isSuccessful) {
-                        val msg = if (endpoint == "topup") topupMessage(body, nodeName(node)) ?: successMessage else successMessage
+                        val msg = if (endpoint == "topup" || endpoint == "topup-request/approve") topupMessage(body, nodeName(node)) ?: successMessage else successMessage
                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         onRefresh()
                         loadScreenDetails(node)
@@ -251,7 +251,7 @@ fun PSBillScreensConfigView(
 
     // While a screen is open and running, refresh every 5 s so the time left / bill is
     // live (the main list refreshes only every 25 s). Between refreshes LiveBill ticks.
-    val openLive = openNode != null && screenStatus(openNode).first in setOf("PLAYING", "OVERTIME")
+    val openLive = openNode != null && screenStatus(openNode).first in setOf("PLAYING", "OVERTIME", "WANTS TIME", "CONSOLE OFF")
     LaunchedEffect(openNodeId, openLive) {
         while (openLive) { delay(5_000); onRefresh() }
     }
@@ -374,7 +374,7 @@ fun PSBillScreensConfigView(
         )
     }
 
-    val playing = nodes.count { screenStatus(it).first in setOf("PLAYING", "OVERTIME") }
+    val playing = nodes.count { screenStatus(it).first in setOf("PLAYING", "OVERTIME", "WANTS TIME", "CONSOLE OFF") }
     val toPay = nodes.count { screenStatus(it).first == "TO PAY" }
     val free = nodes.count { screenStatus(it).first == "FREE" }
 
@@ -411,7 +411,7 @@ fun PSBillScreensConfigView(
             val game = nodeGame(node)
             val due = node.optDouble("active_billing_kes", 0.0)
             val detail = when (label) {
-                "PLAYING", "OVERTIME" -> game.ifBlank { "Session running" }
+                "PLAYING", "OVERTIME", "WANTS TIME", "CONSOLE OFF" -> game.ifBlank { "Session running" }
                 "TO PAY" -> "Session ended - waiting for payment"
                 "ASLEEP" -> "Screen is dark - open to wake it"
                 "OFFLINE" -> "Not connected"
@@ -423,7 +423,7 @@ fun PSBillScreensConfigView(
                 tone = tone,
                 icon = Icons.Filled.Tv,
                 pill = label,
-                trailingValue = if (due > 0 && label in setOf("PLAYING", "OVERTIME", "TO PAY")) kes(due) else null,
+                trailingValue = if (due > 0 && label in setOf("PLAYING", "OVERTIME", "WANTS TIME", "CONSOLE OFF", "TO PAY")) kes(due) else null,
                 trailingTone = PsTone.Good,
                 onClick = {
                     openNodeId = node.optString("id")
@@ -651,8 +651,35 @@ private fun ScreenControl(
     var paidAmount by remember(node.optString("id")) { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // The player asked for more time on the TV: take the money, then approve.
+        pendingTopupRequest(node)?.let { req ->
+            val mins = req.optInt("minutes")
+            val amount = req.optDouble("amount_kes", 0.0)
+            PsSurface {
+                Text("The player wants more time", color = PsTone.Warn, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(
+                    "+$mins min = ${kes(amount)}" + when (req.optString("reason")) {
+                        "queue" -> " (overtime price: someone is waiting)"
+                        "rush" -> " (overtime price: rush hour)"
+                        else -> ""
+                    },
+                    color = PSBillThemeColors.TextPrimary, fontSize = 14.sp
+                )
+                Text("Take the money first, then approve. The price is checked again when you approve.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !busy,
+                        onClick = { onAction("topup-request/approve", JSONObject(), "Added $mins min on $name") },
+                    ) { Text("Paid - approve") }
+                    TextButton(
+                        enabled = !busy,
+                        onClick = { onAction("topup-request/decline", JSONObject(), "Request declined on $name") },
+                    ) { Text("Decline", color = PsTone.Bad) }
+                }
+            }
+        }
         when (label) {
-            "PLAYING", "OVERTIME" -> PsSurface {
+            "PLAYING", "OVERTIME", "WANTS TIME", "CONSOLE OFF" -> PsSurface {
                 Text("Now playing", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
                 Text(nodeGame(node).ifBlank { "Game session" }, color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 LiveBill(node)

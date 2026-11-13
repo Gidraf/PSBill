@@ -235,11 +235,24 @@ fun screenStatus(node: org.json.JSONObject): Pair<String, Color> {
         node.optBoolean("is_asleep", false) -> "ASLEEP" to PsTone.Idle
         !online -> "OFFLINE" to PsTone.Bad
         consoleOff && status in setOf("ACTIVE", "OVERTIME", "PENDING") -> "CONSOLE OFF" to PsTone.Warn
+        pendingTopupRequest(node) != null && status in setOf("ACTIVE", "OVERTIME") -> "WANTS TIME" to PsTone.Warn
         status == "OVERTIME" -> "OVERTIME" to PsTone.Warn
         status == "ACTIVE" || status == "PENDING" -> "PLAYING" to PsTone.Busy
         node.optBoolean("has_ended_session", false) -> "TO PAY" to PsTone.Warn
         else -> "FREE" to PsTone.Good
     }
+}
+
+/** The player's top-up request from the TV, while it waits for staff (10 minutes). */
+fun pendingTopupRequest(node: org.json.JSONObject): org.json.JSONObject? {
+    val r = node.optJSONObject("topup_request") ?: return null
+    if (r.optString("status") != "PENDING") return null
+    val at = runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+            .parse(r.optString("at").take(19))?.time
+    }.getOrNull() ?: return null
+    return if (System.currentTimeMillis() - at < 10 * 60_000L) r else null
 }
 
 fun nodeName(node: org.json.JSONObject): String =

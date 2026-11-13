@@ -48,6 +48,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
@@ -107,6 +112,15 @@ class KioskService : Service() {
     // 5 minutes, and always near the end. 0 = green, 1 = amber, 2 = red.
     private val meterVisible = mutableStateOf(true)
     private val meterLevel = mutableStateOf(0)
+    // Continue in the BACK dialog shows the meter for a few seconds (elapsedRealtime)
+    private var meterPeekUntil = 0L
+    // Pay-first finale: the last 10 seconds as a big countdown, then "TIME UP"
+    private val finaleText = mutableStateOf<String?>(null)
+    private var finaleView: ComposeView? = null
+    private var finaleHideJob: Job? = null
+    // The player's top-up request (sent from the TV, approved by staff)
+    private var lastTopupRequestStatus: String? = null
+    private var lastTopupRequestAt: String? = null
     // Queue: a short pop-up when someone joins the queue for this screen.
     private val queueNotice = mutableStateOf<String?>(null)
     private var queueWaiting = 0
@@ -795,6 +809,8 @@ class KioskService : Service() {
                             remainingDrift -= step
                         }
                         activeSecondsRemaining = localSecondsRemaining
+                        val left = localSecondsRemaining
+                        withContext(Dispatchers.Main) { updateFinale(left) }
                         if (localSecondsRemaining <= 0) {
                             // Pay-first: the screen locks when the paid time is used up.
                             // Play continues only after a top-up (bought before it runs out).
@@ -1469,6 +1485,7 @@ class KioskService : Service() {
                             val oldStatus = deviceStatus
                             cacheDeviceState(data)
                             onQueueInfo(data)
+                            onTopupRequest(data)
                             if (!isLiveSession(data)) {
                                 // Server confirms session is not live — clear the pending flag
                                 localSessionEndedPendingServerConfirm = false
@@ -1958,13 +1975,14 @@ class KioskService : Service() {
             prepaidWarningShown = true
             val pricier = overchargeNow() && overtimeRate > ratePerMinute
             showNotice(
-                if (pricier) "2 minutes left - the screen locks at 0\nTop up with the staff now: KES ${formatRate(overtimeRate)}/min (${whyOvercharge()})"
-                else "2 minutes left - the screen locks at 0\nTop up with the staff to keep playing",
+                if (pricier) "2 minutes left - the screen locks at 0\nPress BACK to add time: KES ${formatRate(overtimeRate)}/min (${whyOvercharge()})"
+                else "2 minutes left - the screen locks at 0\nPress BACK to add time",
                 20_000
             )
         }
         if (mode == "PREPAID" && level == 0) prepaidWarningShown = false  // topped up
-        meterVisible.value = level > 0 || secsElapsed < 20 || (secsElapsed % 300) < 10
+        meterVisible.value = level > 0 || secsElapsed < 20 || (secsElapsed % 300) < 10 ||
+            android.os.SystemClock.elapsedRealtime() < meterPeekUntil
     }
 
     /** Queue info from the 2-second sync: pop up a short notice when someone joins. */
@@ -2009,6 +2027,154 @@ class KioskService : Service() {
         queueNoticeJob = serviceScope.launch {
             delay(millis)
             queueNotice.value = null
+        }
+    }
+
+    /** Show the meter for a few seconds (Continue in the BACK dialog). Amber/red stay on anyway. */
+    private fun peekMeter(millis: Long = 8_000L) {
+        meterPeekUntil = android.os.SystemClock.elapsedRealtime() + millis
+        meterVisible.value = true
+    }
+
+    /** Price per minute of a top-up right now: the overtime price while someone waits / rush hour. */
+    private fun topupRate(): Double =
+        if (overchargeNow() && overtimeRate > ratePerMinute) overtimeRate else ratePerMinute
+
+    /** The player asks for more time; staff approve it in the app after taking the money. */
+    private fun sendTopupRequest(minutes: Int, done: (Boolean, String) -> Unit) {
+        val id = getKioskDeviceId().ifEmpty { getMacAddress() }
+        val token = getEncryptedPrefs(this).getString("auth_token", "") ?: ""
+        val body = JSONObject().put("minutes", minutes).toString()
+            .toRequestBody("application/json".toMediaType())
+        val req = Request.Builder()
+            .url("${apiBaseUrl(serverDomain)}/api/v1/kiosk/devices/$id/topup-request")
+            .header("Authorization", "Bearer $token")
+            .header("X-Device-Fingerprint", getDeviceFingerprint())
+            .post(body)
+            .build()
+        serviceScope.launch(Dispatchers.IO) {
+            val (ok, msg) = try {
+                client.newCall(req).execute().use { resp ->
+                    val text = resp.body?.string().orEmpty()
+                    if (resp.isSuccessful) {
+                        val r = JSONObject(text).optJSONObject("topup_request")
+                        lastTopupRequestStatus = "PENDING"
+                        lastTopupRequestAt = r?.optString("at")
+                        true to "Sent. Pay KES ${formatRate(r?.optDouble("amount_kes", 0.0) ?: 0.0)} to the staff - your time is added when they approve."
+                    } else {
+                        false to (try { JSONObject(text).optString("error") } catch (_: Exception) { "" })
+                            .ifBlank { "Could not send - ask the staff" }
+                    }
+                }
+            } catch (e: Exception) {
+                false to "No connection - ask the staff"
+            }
+            withContext(Dispatchers.Main) { done(ok, msg) }
+        }
+    }
+
+    /** Staff answered the player's top-up request: tell the player. */
+    private fun onTopupRequest(data: JSONObject) {
+        val r = data.optJSONObject("topup_request") ?: return
+        val status = r.optString("status")
+        val at = r.optString("at")
+        if (at == lastTopupRequestAt && status == lastTopupRequestStatus) return
+        val sameRequest = at == lastTopupRequestAt
+        lastTopupRequestAt = at
+        lastTopupRequestStatus = status
+        if (!sameRequest) return  // first sight after a restart: nothing to announce
+        when (status) {
+            "APPROVED" -> {
+                val mins = r.optInt("added_minutes", r.optInt("minutes", 0))
+                showNotice("Top-up approved: +$mins min\nEnjoy the game!", 8_000)
+                peekMeter()
+            }
+            "DECLINED" -> showNotice("Top-up not approved\nTalk to the staff", 10_000)
+        }
+    }
+
+    /** Pay-first: the last 10 seconds count down big on screen, then "TIME UP". */
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun updateFinale(secsLeft: Int) {
+        if (isAdminMode.value || billingMode != "PREPAID") { hideFinale(); return }
+        when {
+            secsLeft in 1..10 -> { finaleText.value = secsLeft.toString(); showFinale() }
+            secsLeft <= 0 -> {
+                finaleText.value = "TIME UP"
+                showFinale()
+                finaleHideJob?.cancel()
+                finaleHideJob = serviceScope.launch { delay(3_500); withContext(Dispatchers.Main) { hideFinale() } }
+            }
+            else -> hideFinale()  // topped up
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun showFinale() {
+        if (finaleView != null) return
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+            // see-through to the game and never takes the remote/controller
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            PixelFormat.TRANSLUCENT
+        )
+        val owner = CustomLifecycleOwner().also { it.start() }
+        val view = ComposeView(this).apply {
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeViewModelStoreOwner(CustomViewModelStoreOwner())
+            setViewTreeSavedStateRegistryOwner(CustomSavedStateRegistryOwner())
+            setContent { FinaleOverlay() }
+        }
+        try {
+            windowManager?.addView(view, params)
+            finaleView = view
+        } catch (e: Exception) {
+            Log.e(TAG, "Finale overlay failed: ${e.message}")
+        }
+    }
+
+    private fun hideFinale() {
+        finaleText.value = null
+        val v = finaleView ?: return
+        try { windowManager?.removeView(v) } catch (_: Exception) {}
+        finaleView = null
+    }
+
+    @Composable
+    private fun FinaleOverlay() {
+        val text = finaleText.value ?: return
+        val over = text == "TIME UP"
+        // every new number pops in: big -> normal, bright -> settled
+        val pop = remember(text) { Animatable(1.6f) }
+        LaunchedEffect(text) { pop.animateTo(1f, tween(450)) }
+        val color = if (over) Color(0xFFEF4444) else Color(0xFFFBBF24)
+        Box(
+            Modifier.fillMaxSize().background(if (over) Color(0xB3000000) else Color(0x33000000)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text,
+                    color = color,
+                    fontSize = if (over) 96.sp else 140.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value; alpha = (2.2f - pop.value).coerceIn(0f, 1f) },
+                )
+                Text(
+                    if (over) "Thanks for playing! Ask the staff to add time." else "Time almost up - press BACK to add time",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.background(Color(0x99000000), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
+                )
+            }
         }
     }
 
@@ -2076,6 +2242,15 @@ class KioskService : Service() {
             label = "meterAccent",
         )
 
+        // Time almost up (red): the meter blinks so the player notices it.
+        val blink = rememberInfiniteTransition(label = "meterBlink")
+        val blinkAlpha by blink.animateFloat(
+            initialValue = 1f, targetValue = 0.3f,
+            animationSpec = infiniteRepeatable(tween(550), RepeatMode.Reverse),
+            label = "meterBlinkAlpha",
+        )
+        val meterAlpha = if (level >= 2 && !isAdm) blinkAlpha else 1f
+
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             AnimatedVisibility(visible = notice != null, enter = fadeIn(tween(400)), exit = fadeOut(tween(800))) {
                 Column(
@@ -2099,6 +2274,7 @@ class KioskService : Service() {
             AnimatedVisibility(visible = visible, enter = fadeIn(tween(500)), exit = fadeOut(tween(1200))) {
                 Column(
                     modifier = Modifier
+                        .graphicsLayer { alpha = meterAlpha }
                         .background(Color(0xD90B0F19), RoundedCornerShape(10.dp))
                         .border(1.5.dp, accent, RoundedCornerShape(10.dp))
                         .padding(horizontal = 10.dp, vertical = 5.dp),
@@ -2723,6 +2899,9 @@ class KioskService : Service() {
                             )
                         }
 
+                        // Pay-first: ask for more time here; staff approve it after taking the money.
+                        if (isPrepaid) AddTimeSection()
+
                         // Buttons row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -2731,7 +2910,7 @@ class KioskService : Service() {
                             // Continue playing — default focused
                             var isContinueFocused by remember { mutableStateOf(false) }
                             Button(
-                                onClick = { dismissEndSessionConfirmationDialog() },
+                                onClick = { dismissEndSessionConfirmationDialog(); peekMeter() },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (isContinueFocused) Color(0xFF16A34A) else Color(0xFF15803D),
                                     contentColor = Color.White
@@ -2788,6 +2967,7 @@ class KioskService : Service() {
                 if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK &&
                     event.action == android.view.KeyEvent.ACTION_DOWN) {
                     dismissEndSessionConfirmationDialog()
+                    peekMeter()
                     return true
                 }
                 return super.dispatchKeyEvent(event)
@@ -2806,6 +2986,60 @@ class KioskService : Service() {
         wrapper.requestFocus()
         endSessionDialogWrapper = wrapper
         endSessionDialogView = newDialogView
+    }
+
+    @Composable
+    private fun AddTimeSection() {
+        val rate = topupRate()
+        val pricier = overchargeNow() && overtimeRate > ratePerMinute
+        var sending by remember { mutableStateOf(false) }
+        var result by remember { mutableStateOf<String?>(null) }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF0B2545), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0xFF38BDF8), RoundedCornerShape(10.dp))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Add time", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(
+                if (pricier) "KES ${formatRate(rate)}/min now - overtime price (${whyOvercharge()})"
+                else "KES ${formatRate(rate)}/min. If someone is waiting for this screen, the overtime price applies.",
+                color = Color(0xFFBAE6FD), fontSize = 11.sp, lineHeight = 15.sp,
+            )
+            val msg = result
+            if (msg != null) {
+                Text(msg, color = Color(0xFFFDE68A), fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
+            } else if (rate > 0) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(15, 30, 60).forEach { mins ->
+                        var focused by remember { mutableStateOf(false) }
+                        Button(
+                            onClick = {
+                                if (sending) return@Button
+                                sending = true
+                                sendTopupRequest(mins) { _, text -> sending = false; result = text }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (focused) Color(0xFF0284C7) else Color(0xFF075985),
+                                contentColor = Color.White,
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { focused = it.isFocused }
+                                .border(2.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp),
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("+$mins min", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("KES ${formatRate(rate * mins)}", fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun dismissEndSessionConfirmationDialog() {

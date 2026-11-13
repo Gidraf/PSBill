@@ -28,7 +28,7 @@ fun PSBillMatchesView(ctx: PsbillTabContext) {
     var showNew by remember { mutableStateOf(false) }
 
     fun reload() {
-        val playing = ctx.nodes.filter { screenStatus(it).first in setOf("PLAYING", "OVERTIME") }
+        val playing = ctx.nodes.filter { screenStatus(it).first in setOf("PLAYING", "OVERTIME", "WANTS TIME", "CONSOLE OFF") }
         matches.keys.retainAll(playing.map { it.optString("id") }.toSet())
         if (playing.isEmpty()) { loading = false; return }
         loading = true
