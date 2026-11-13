@@ -38,6 +38,9 @@ class PsApi(
     fun post(path: String, body: JSONObject, done: (Int, String) -> Unit) =
         run(req(path).post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build(), done)
 
+    fun put(path: String, body: JSONObject, done: (Int, String) -> Unit) =
+        run(req(path).put(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build(), done)
+
     private fun req(path: String): Request.Builder {
         val b = Request.Builder().url("$serverHost$path")
         if (token.isNotBlank()) b.header("Authorization", "Bearer $token")

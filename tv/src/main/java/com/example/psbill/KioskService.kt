@@ -172,6 +172,8 @@ class KioskService : Service() {
     // Pay-after: past the turn while others wait, each second is "queued overtime",
     // billed at overtimeRate (0 = the normal rate). The player is told when it starts.
     private var overtimeRate = 0.0
+    private var rushHour = false
+    private var prepaidWarningShown = false
     private var queuedOvertimeSecs = 0
     private var turnWarningShown = false
     private var overtimeNoticeShown = false
@@ -478,6 +480,7 @@ class KioskService : Service() {
                     localSecondsElapsed = 0
                     localSecondsElapsedOvertime = 0
                     queuedOvertimeSecs = 0
+                    prepaidWarningShown = false
                     turnWarningShown = false
                     overtimeNoticeShown = false
                     elapsedDrift = 0
@@ -772,26 +775,29 @@ class KioskService : Service() {
                         }
                         activeSecondsRemaining = localSecondsRemaining
                         if (localSecondsRemaining <= 0) {
-                            if (localAllowOvertime) {
-                                deviceStatus = "OVERTIME"
-                                localSecondsElapsedOvertime = Math.abs(localSecondsRemaining)
-                                localSecondsRemaining = 0
-                            } else {
-                                deviceStatus = "LOCKED"
-                                localSessionEndedPendingServerConfirm = true
-                                withContext(Dispatchers.Main) {
-                                    // Call the stop endpoint so server also marks session ended.
-                                    // This prevents syncStateWithServer() from seeing server=ACTIVE
-                                    // and re-unlocking the screen.
-                                    endActiveSessionLocallyAndOnServer()
-                                }
-                                break
+                            // Pay-first: the screen locks when the paid time is used up.
+                            // Play continues only after a top-up (bought before it runs out).
+                            deviceStatus = "LOCKED"
+                            localSessionEndedPendingServerConfirm = true
+                            withContext(Dispatchers.Main) {
+                                // Call the stop endpoint so server also marks session ended.
+                                // This prevents syncStateWithServer() from seeing server=ACTIVE
+                                // and re-unlocking the screen.
+                                endActiveSessionLocallyAndOnServer()
                             }
+                            break
                         }
                     } else {
-                        if (queueWaiting > 0 && localSecondsElapsed > turnSeconds) queuedOvertimeSecs++
+                        if (overchargeNow() && localSecondsElapsed > turnSeconds) queuedOvertimeSecs++
                         activeBillingKes = postpaidBill()
                     }
+                } else if (deviceStatus == "OVERTIME" && billingMode == "PREPAID") {
+                    // Pay-first never runs into overtime: lock (an old session, or one the
+                    // server started in overtime). A top-up starts the time again.
+                    deviceStatus = "LOCKED"
+                    localSessionEndedPendingServerConfirm = true
+                    withContext(Dispatchers.Main) { endActiveSessionLocallyAndOnServer() }
+                    break
                 } else if (deviceStatus == "OVERTIME") {
                     localSecondsElapsedOvertime++
                     if (applyDriftThisTick && overtimeDrift != 0) {
@@ -1320,10 +1326,6 @@ class KioskService : Service() {
         activeBillingKes = data.optDouble("active_billing_kes")
         minCharge = data.optDouble("minimum_charge_kes", 40.0)
         ratePerMinute = data.optDouble("rate_per_minute_kes", 3.0)
-        if (data.has("overtime_rate_per_minute_kes")) {
-            val ot = data.optDouble("overtime_rate_per_minute_kes", 0.0)
-            overtimeRate = if (ot.isNaN() || ot <= 0) 0.0 else ot
-        }
         billingMode = data.optString("billing_mode", "POSTPAID")
         activeBillingMode.value = billingMode
         activeSecondsRemaining = localSecondsRemaining
@@ -1819,7 +1821,7 @@ class KioskService : Service() {
                 secsRemaining <= 300 -> 1
                 else -> 0
             }
-            queueWaiting > 0 -> when {
+            overchargeNow() -> when {
                 secsElapsed >= turnSeconds -> 2
                 secsElapsed >= turnSeconds - 300 -> 1
                 else -> 0
@@ -1827,13 +1829,27 @@ class KioskService : Service() {
             else -> 0
         }
         meterLevel.value = level
-        if (mode != "PREPAID" && !isAdminMode.value && queueWaiting > 0 && level > 0) tellPlayerAboutOvertime(level)
+        if (mode != "PREPAID" && !isAdminMode.value && overchargeNow() && level > 0) tellPlayerAboutOvertime(level)
+        if (mode == "PREPAID" && !isAdminMode.value && level >= 2 && !prepaidWarningShown) {
+            prepaidWarningShown = true
+            val pricier = overchargeNow() && overtimeRate > ratePerMinute
+            showNotice(
+                if (pricier) "2 minutes left - the screen locks at 0\nTop up with the staff now: KES ${formatRate(overtimeRate)}/min (${whyOvercharge()})"
+                else "2 minutes left - the screen locks at 0\nTop up with the staff to keep playing",
+                20_000
+            )
+        }
+        if (mode == "PREPAID" && level == 0) prepaidWarningShown = false  // topped up
         meterVisible.value = level > 0 || secsElapsed < 20 || (secsElapsed % 300) < 10
     }
 
     /** Queue info from the 2-second sync: pop up a short notice when someone joins. */
     private fun onQueueInfo(data: JSONObject) {
         turnSeconds = data.optInt("turn_seconds", turnSeconds).coerceAtLeast(300)
+        // The sync carries the EFFECTIVE overtime price (the screen's, else the business's).
+        val ot = data.optDouble("overtime_rate_per_minute_kes", overtimeRate)
+        overtimeRate = if (ot.isNaN() || ot <= 0) 0.0 else ot
+        rushHour = data.optBoolean("rush_hour", rushHour)
         val queue = data.optJSONObject("queue")
         val waiting = queue?.optInt("waiting_count", 0) ?: 0
         val previous = queueWaiting
@@ -1874,6 +1890,11 @@ class KioskService : Service() {
 
     private fun effectiveOvertimeRate() = if (overtimeRate > 0) overtimeRate else ratePerMinute
 
+    /** Overtime price applies while someone waits for this screen, or in rush hours. */
+    private fun overchargeNow() = queueWaiting > 0 || rushHour
+
+    private fun whyOvercharge() = if (queueWaiting > 0) "someone is waiting" else "rush hour"
+
     /** Pay-after bill: normal rate, queued overtime at the overtime rate, at least the minimum. */
     private fun postpaidBill(): Double {
         val q = queuedOvertimeSecs.coerceIn(0, maxOf(0, localSecondsElapsed))
@@ -1891,16 +1912,16 @@ class KioskService : Service() {
         if (level == 1 && !turnWarningShown) {
             turnWarningShown = true
             showNotice(
-                if (pricier) "Your turn ends in 5 minutes - someone is waiting\nAfter that, overtime is $price"
-                else "Your turn ends in 5 minutes\nSomeone is waiting for this screen",
+                if (pricier) "Your turn ends in 5 minutes - ${whyOvercharge()}\nAfter that, overtime is $price"
+                else "Your turn ends in 5 minutes\n${whyOvercharge().replaceFirstChar { it.uppercase() }}",
                 15_000
             )
         } else if (level >= 2 && !overtimeNoticeShown) {
             overtimeNoticeShown = true
             turnWarningShown = true
             showNotice(
-                if (pricier) "Overtime price now applies: $price\nSomeone is waiting for this screen"
-                else "Your turn is over\nSomeone is waiting for this screen",
+                if (pricier) "Overtime price now applies: $price\n${whyOvercharge().replaceFirstChar { it.uppercase() }}"
+                else "Your turn is over\n${whyOvercharge().replaceFirstChar { it.uppercase() }}",
                 20_000
             )
         }
@@ -1987,8 +2008,8 @@ class KioskService : Service() {
                             mode == "PREPAID" && level >= 1 -> "Time almost up"
                             mode == "PREPAID" -> "Time left"
                             level >= 2 && overtimeRate > ratePerMinute -> "Overtime KES ${formatRate(overtimeRate)}/min"
-                            level >= 2 -> "Turn over, others waiting"
-                            level == 1 -> "Others waiting"
+                            level >= 2 -> if (queueWaiting > 0) "Turn over, others waiting" else "Turn over, rush hour"
+                            level == 1 -> if (queueWaiting > 0) "Others waiting" else "Rush hour"
                             else -> "Playing"
                         },
                         color = Color(0xFFCBD5E1),

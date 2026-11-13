@@ -94,6 +94,15 @@ fun PSBillScreensConfigView(
     var sessionsPages by remember { mutableStateOf(1) }
     var sessionsTotal by remember { mutableStateOf(0) }
     val sessionsLimit = 20
+    // Turn length, overtime price and rush hours (business-wide; Prices button on the list).
+    var pricing by remember { mutableStateOf<JSONObject?>(null) }
+    var showPricing by remember { mutableStateOf(false) }
+    fun loadPricing() {
+        api.get("/api/v1/kiosk/pricing-rules") { code, body ->
+            if (code in 200..299) pricing = runCatching { JSONObject(body) }.getOrNull()
+        }
+    }
+    LaunchedEffect(token) { if (token.isNotBlank()) loadPricing() }
 
     fun authorizedBuilder(url: String): Request.Builder {
         val builder = Request.Builder().url(url)
@@ -205,7 +214,8 @@ fun PSBillScreensConfigView(
                         return@runOnUiThread
                     }
                     if (response.isSuccessful) {
-                        Toast.makeText(context, successMessage, Toast.LENGTH_SHORT).show()
+                        val msg = if (endpoint == "topup") topupMessage(body, nodeName(node)) ?: successMessage else successMessage
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         onRefresh()
                         loadScreenDetails(node)
                     } else {
@@ -248,8 +258,19 @@ fun PSBillScreensConfigView(
 
     if (openNode != null) {
         BackHandler { openNodeId = null }
+        // Top-ups cost the overtime price while someone waits for this screen or in rush hours.
+        val waitingHere = queueTickets.any { it.optString("status").uppercase(Locale.US) == "WAITING" }
+        val why = when {
+            waitingHere -> "someone is waiting"
+            pricing?.optBoolean("rush_hour_now") == true -> "rush hour"
+            else -> null
+        }
+        val otRate = openNode.optDouble("overtime_rate_per_minute_kes", 0.0).takeIf { !it.isNaN() && it > 0 }
+            ?: pricing?.optDouble("overtime_rate_per_minute", 0.0)?.takeIf { !it.isNaN() && it > 0 }
+        val overcharge = if (why != null && otRate != null) otRate to why else null
         ScreenDetail(
             node = openNode,
+            overcharge = overcharge,
             games = games,
             busy = actionNodeId == openNode.optString("id"),
             selectedGame = selectedGameByNode[openNode.optString("id")].orEmpty(),
@@ -336,6 +357,23 @@ fun PSBillScreensConfigView(
         return
     }
 
+    if (showPricing) {
+        PricingRulesDialog(
+            current = pricing,
+            onDismiss = { showPricing = false },
+            onSave = { body, done ->
+                api.put("/api/v1/kiosk/pricing-rules", body) { code, text ->
+                    if (code in 200..299) {
+                        pricing = runCatching { JSONObject(text) }.getOrNull()
+                        api.toast("Prices saved - the TVs use them within seconds")
+                        showPricing = false
+                        done(null)
+                    } else done(api.errorText(code, text, "Could not save"))
+                }
+            },
+        )
+    }
+
     val playing = nodes.count { screenStatus(it).first in setOf("PLAYING", "OVERTIME") }
     val toPay = nodes.count { screenStatus(it).first == "TO PAY" }
     val free = nodes.count { screenStatus(it).first == "FREE" }
@@ -343,6 +381,9 @@ fun PSBillScreensConfigView(
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             PsPageHeader("Screens", "Tap a screen to start, end or manage it") {
+                TextButton(onClick = { loadPricing(); showPricing = true }) {
+                    Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Prices")
+                }
                 if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 else IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "Refresh") }
             }
@@ -399,6 +440,7 @@ fun PSBillScreensConfigView(
 @Composable
 private fun ScreenDetail(
     node: JSONObject,
+    overcharge: Pair<Double, String>?,
     games: List<JSONObject>,
     busy: Boolean,
     selectedGame: String,
@@ -465,7 +507,7 @@ private fun ScreenDetail(
                     if (activeMatch != null) {
                         LoserPayMatchCard(activeMatch, null, busy, onRound, onEndMatch)
                     } else {
-                        ScreenControl(node, label, games, busy, selectedGame, onGameChange, selectedBilling, onBillingChange, onAction, onLoserStart)
+                        ScreenControl(node, label, games, busy, selectedGame, onGameChange, selectedBilling, onBillingChange, onAction, onLoserStart, overcharge)
                     }
                 }
                 1 -> {
@@ -596,6 +638,7 @@ private fun ScreenControl(
     onBillingChange: (String) -> Unit,
     onAction: (String, JSONObject, String) -> Unit,
     onLoserStart: (String, String, String) -> Unit,
+    overcharge: Pair<Double, String>? = null,
 ) {
     val name = nodeName(node)
     val due = node.optDouble("active_billing_kes", 0.0)
@@ -633,10 +676,18 @@ private fun ScreenControl(
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PsTone.Good)
                 ) { Icon(Icons.Filled.CheckCircle, null); Spacer(Modifier.width(8.dp)); Text("Paid - free the screen") }
-                OutlinedButton(
-                    onClick = { onAction("continue", JSONObject(), "Session resumed on $name") }, enabled = !busy,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Continue the same session") }
+                if (isPrepaid(node)) {
+                    // Pay-first locks when the time is used up; it continues only after a top-up.
+                    OutlinedButton(
+                        onClick = { showTopup = true }, enabled = !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Icon(Icons.Filled.AddCircle, null); Spacer(Modifier.width(8.dp)); Text("Top up and continue") }
+                } else {
+                    OutlinedButton(
+                        onClick = { onAction("continue", JSONObject(), "Session resumed on $name") }, enabled = !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Continue the same session") }
+                }
             }
             "ASLEEP" -> PsSurface {
                 Text("This screen is asleep", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -725,21 +776,29 @@ private fun ScreenControl(
     if (showTopup) {
         var topup by remember { mutableStateOf("") }
         val topupAmount = topup.toDoubleOrNull() ?: 0.0
+        val topupRate = overcharge?.first ?: rate
         AlertDialog(
             onDismissRequest = { showTopup = false },
             title = { Text("Top up $name") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Take the money first. The minutes are added to the time left.", color = PSBillThemeColors.TextSecondary, fontSize = 13.sp)
-                    AmountToMinutes(topup, { topup = it }, rate, "Amount paid (KSh)")
+                    Text(
+                        if (label == "TO PAY") "Take the money first. The screen unlocks and the same session continues."
+                        else "Take the money first. The minutes are added to the time left.",
+                        color = PSBillThemeColors.TextSecondary, fontSize = 13.sp
+                    )
+                    if (overcharge != null) {
+                        Text("Overtime price now: ${kes(overcharge.first)}/min (${overcharge.second}).", color = PsTone.Warn, fontSize = 13.sp)
+                    }
+                    AmountToMinutes(topup, { topup = it }, topupRate, "Amount paid (KSh)")
                 }
             },
             confirmButton = {
                 TextButton(
-                    enabled = topupAmount > 0 && rate > 0,
+                    enabled = topupAmount > 0 && topupRate > 0,
                     onClick = {
                         showTopup = false
-                        onAction("topup", JSONObject().put("amount_kes", topupAmount), "Added ${minutesText(topupAmount, rate)} on $name")
+                        onAction("topup", JSONObject().put("amount_kes", topupAmount), "Added ${minutesText(topupAmount, topupRate)} on $name")
                     }
                 ) { Text("Add time") }
             },
@@ -838,4 +897,92 @@ private fun LiveBill(node: JSONObject) {
                 color = PsTone.Warn, fontSize = 13.sp)
         }
     }
+}
+
+
+/** Toast text for a top-up from the server's answer (minutes, price used, why). */
+private fun topupMessage(body: String, name: String): String? = runCatching {
+    val j = JSONObject(body)
+    val mins = j.optInt("added_seconds") / 60
+    val rate = j.optDouble("rate_used", 0.0)
+    val why = when (j.optString("overcharge")) {
+        "queue" -> " (overtime price: someone is waiting)"
+        "rush" -> " (overtime price: rush hour)"
+        else -> ""
+    }
+    "Added $mins min on $name at ${kes(rate)}/min$why"
+}.getOrNull()
+
+/** Turn length, overtime price and rush hours for the whole business. */
+@Composable
+private fun PricingRulesDialog(
+    current: JSONObject?,
+    onDismiss: () -> Unit,
+    onSave: (JSONObject, (String?) -> Unit) -> Unit,
+) {
+    var turn by remember(current) { mutableStateOf(current?.optInt("turn_minutes", 30)?.toString() ?: "30") }
+    var ot by remember(current) {
+        mutableStateOf(current?.optDouble("overtime_rate_per_minute", 0.0)?.takeIf { it > 0 }?.let {
+            if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()
+        } ?: "")
+    }
+    var rushOn by remember(current) { mutableStateOf(current?.optBoolean("rush_hours_enabled") == true) }
+    var rush by remember(current) { mutableStateOf(current?.optString("rush_hours").orEmpty().ifBlank { "17:00-22:00" }) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Prices & rush hours") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    turn, { turn = it.filter(Char::isDigit).take(3) }, singleLine = true,
+                    label = { Text("Turn length (minutes)") },
+                    supportingText = { Text("Pay-after: after this, overtime starts if someone waits or in rush hours") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    ot, { ot = it.filter { c -> c.isDigit() || c == '.' }.take(6) }, singleLine = true,
+                    label = { Text("Overtime price (KSh per minute)") },
+                    placeholder = { Text("Empty = the game's normal price") },
+                    supportingText = { Text("Pay-after minutes past the turn, and pay-first top-ups") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Rush hours", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold)
+                        Text("Overtime price applies even when no one is queued", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                    }
+                    Switch(checked = rushOn, onCheckedChange = { rushOn = it })
+                }
+                if (rushOn) {
+                    OutlinedTextField(
+                        rush, { rush = it.take(200) }, singleLine = true,
+                        label = { Text("Times (Nairobi)") },
+                        supportingText = { Text("Like 17:00-22:00, or 12:00-14:00, 17:00-23:00") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (current?.optBoolean("rush_hour_now") == true) {
+                    Text("It is rush hour now.", color = PsTone.Warn, fontSize = 13.sp)
+                }
+                error?.let { Text(it, color = PsTone.Bad, fontSize = 13.sp) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !saving, onClick = {
+                saving = true; error = null
+                val body = JSONObject().apply {
+                    put("turn_minutes", turn.toIntOrNull() ?: 30)
+                    put("overtime_rate_per_minute", ot.toDoubleOrNull() ?: 0.0)
+                    put("rush_hours_enabled", rushOn)
+                    put("rush_hours", rush.trim())
+                }
+                onSave(body) { err -> saving = false; error = err }
+            }) { Text(if (saving) "Saving..." else "Save") }
+        },
+        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("Cancel") } },
+    )
 }
