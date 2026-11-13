@@ -255,6 +255,16 @@ class LockActivity : ComponentActivity() {
                 endedSessionAmount = json.optDouble("active_billing_kes", 0.0)
                 endedSessionGame = json.optCleanString("current_game", "")
                 endedSessionBillingMode = json.optCleanString("billing_mode", "")
+                // The server's final bill wins: the invoice the TV built at the moment the
+                // session ended can still be 0 (it ended before the last amount arrived),
+                // which left the big "amount due" card at KES 0 while this one said 82.
+                if (endedSessionAmount > 0) invoiceAmount = endedSessionAmount
+                if (invoiceGame.isBlank()) invoiceGame = endedSessionGame
+                if (invoiceBillingMode.isBlank()) invoiceBillingMode = endedSessionBillingMode
+                if (invoiceDuration <= 0) {
+                    val secs = json.optInt("seconds_elapsed", 0) + json.optInt("seconds_elapsed_overtime", 0)
+                    if (secs > 0) invoiceDuration = maxOf(1, Math.round(secs / 60.0).toInt())
+                }
                 showInvoiceDialog = true
             } else if (!serverHasEnded) {
                 // A new session started — reset the acknowledged flag for the next end cycle.
@@ -557,7 +567,7 @@ class LockActivity : ComponentActivity() {
 
                 if (showInvoiceDialog) {
                     SessionSummaryDialog(
-                        amount = invoiceAmount,
+                        amount = if (invoiceAmount > 0) invoiceAmount else endedSessionAmount,
                         duration = invoiceDuration,
                         game = invoiceGame,
                         billingMode = invoiceBillingMode,

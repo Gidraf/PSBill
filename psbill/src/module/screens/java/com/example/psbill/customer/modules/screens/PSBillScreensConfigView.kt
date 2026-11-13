@@ -224,8 +224,9 @@ fun PSBillScreensConfigView(
         nodes.forEach { node ->
             val nodeId = node.optString("id")
             if (nodeId.isNotBlank() && !selectedGameByNode.containsKey(nodeId)) {
-                selectedGameByNode[nodeId] = node.optString("current_game").ifBlank {
-                    games.firstOrNull()?.optString("game_name") ?: "FIFA"
+                // current_game is JSON null on an idle screen; optString turns that into "null".
+                selectedGameByNode[nodeId] = nodeGame(node).ifBlank {
+                    games.map { it.optString("game_name") }.firstOrNull { it.isNotBlank() && it != "null" } ?: ""
                 }
             }
             if (nodeId.isNotBlank() && !selectedBillingByNode.containsKey(nodeId)) {
@@ -651,7 +652,7 @@ private fun ScreenControl(
                 var open by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
                     OutlinedTextField(
-                        value = selectedGame.ifBlank { options.firstOrNull().orEmpty() },
+                        value = selectedGame.takeIf { it.isNotBlank() && it != "null" } ?: options.firstOrNull().orEmpty(),
                         onValueChange = {}, readOnly = true, label = { Text("Game") },
                         placeholder = { Text("Add games on the dashboard") },
                         modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
@@ -673,7 +674,7 @@ private fun ScreenControl(
                         ) { Text(text, maxLines = 1, fontSize = 13.sp) }
                     }
                 }
-                val game = selectedGame.ifBlank { options.firstOrNull().orEmpty() }
+                val game = selectedGame.takeIf { it.isNotBlank() && it != "null" } ?: options.firstOrNull().orEmpty()
                 val gameRate = games.firstOrNull { it.optString("game_name") == game }
                     ?.optDouble("base_rate_per_minute", 0.0)?.takeIf { it > 0 } ?: rate
                 if (selectedBilling == "LOSER") {
