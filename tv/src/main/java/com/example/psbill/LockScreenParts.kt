@@ -245,7 +245,7 @@ private fun QueuePanel(queueTickets: List<JSONObject>) {
 }
 
 @Composable
-fun LockFooter(macAddress: String, ipAddress: String) {
+fun LockFooter(macAddress: String, ipAddress: String, linkCode: String = "") {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -255,6 +255,13 @@ fun LockFooter(macAddress: String, ipAddress: String) {
             "Arrows to choose  -  OK to select",
             color = LockColors.Muted, fontSize = 14.sp
         )
+        if (linkCode.isNotBlank()) {
+            // Staff: PSBill app -> Link a TV -> this code. It changes now and then.
+            Text(
+                "Staff app code  $linkCode",
+                color = LockColors.Muted, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+            )
+        }
         Text(
             "$ipAddress  ·  $macAddress",
             color = LockColors.Faint, fontSize = 11.sp

@@ -125,6 +125,8 @@ class LockActivity : ComponentActivity() {
 
     private var deviceName by mutableStateOf("TV Screen")
     private var arcadeName by mutableStateOf("Arcade")
+    // 6-digit code the attendant types in the agent app (Link a TV) to control this screen.
+    private var linkCode by mutableStateOf("")
     private var hdmiConnected by mutableStateOf(true)
 
     private var hasEndedSession by mutableStateOf(false)
@@ -264,6 +266,13 @@ class LockActivity : ComponentActivity() {
                 arcadeName = arcName
                 getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
                     .edit().putString("arcade_name", arcName).apply()
+            }
+
+            val code = json.optCleanString("pairing_pin_display", "")
+            if (code.isNotEmpty() && code != linkCode) {
+                linkCode = code
+                getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
+                    .edit().putString("link_code", code).apply()
             }
 
             // Respect explicit HDMI/signal state from server when available.
@@ -421,6 +430,7 @@ class LockActivity : ComponentActivity() {
         val lockBgUrl = prefs.getString("lock_bg_url", "") ?: ""
         deviceName = prefs.getString("device_name", "TV Screen") ?: "TV Screen"
         arcadeName = prefs.getString("arcade_name", "") ?: ""
+        linkCode = prefs.getString("link_code", "") ?: ""
         hdmiConnected = prefs.getBoolean("hdmi_connected", true)
         if (arcadeName.isEmpty()) {
             arcadeName = getArcadeDisplayName()
@@ -467,6 +477,7 @@ class LockActivity : ComponentActivity() {
                 
                 LockScreenContent(
                     macAddress = macAddress,
+                    linkCode = linkCode,
                     ipAddress = ipAddress,
                     lockBgUrl = lockBgUrl,
                     arcadeName = arcadeName,
@@ -1382,6 +1393,7 @@ fun QueueTicketRow(ticket: JSONObject) {
 @Composable
 fun LockScreenContent(
     macAddress: String,
+    linkCode: String,
     ipAddress: String,
     lockBgUrl: String,
     arcadeName: String,
@@ -1663,7 +1675,7 @@ fun LockScreenContent(
                 )
             }
 
-            LockFooter(macAddress = macAddress, ipAddress = ipAddress)
+            LockFooter(macAddress = macAddress, ipAddress = ipAddress, linkCode = linkCode)
         }
     }
 }

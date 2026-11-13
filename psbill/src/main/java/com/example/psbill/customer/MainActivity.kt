@@ -1099,7 +1099,7 @@ fun PSBillSessionsView(
             title = { Text("Link a TV") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Type the 6-digit PIN shown on the TV, or scan its QR code.", fontSize = 14.sp)
+                    Text("Already set-up TV: type the \"Staff app code\" at the bottom of its lock screen. New TV: press Show Linking QR Code on the TV and scan it.", fontSize = 14.sp)
                     OutlinedTextField(
                         value = pinInput,
                         onValueChange = { v -> pinInput = v.filter { it.isDigit() || it == '-' }.take(7) },
