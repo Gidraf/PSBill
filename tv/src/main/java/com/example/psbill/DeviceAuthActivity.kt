@@ -57,6 +57,8 @@ class DeviceAuthActivity : ComponentActivity() {
     private val client = OkHttpClient()
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     private val SERVER_URL = "https://api.ajiriwa.gidraf.dev"
+    private val VERIFY_MAX_ATTEMPTS = 12      // ~1 minute of retries after a reboot
+    private val VERIFY_RETRY_MS = 5_000L
 
     private var pollJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -182,6 +184,24 @@ class DeviceAuthActivity : ComponentActivity() {
         }
     }
 
+    // After a reboot the network is often not up yet when this runs. Keep trying for a
+    // while, then open the app anyway: KioskService keeps retrying and shows this page
+    // itself if the server really refuses the login. Only a real refusal (401/403/404)
+    // sends the TV to the reconnect page.
+    private var verifyAttempts = 0
+
+    private fun retryOrOpen(savedToken: String, fingerprint: String) {
+        verifyAttempts += 1
+        if (verifyAttempts < VERIFY_MAX_ATTEMPTS) {
+            scope.launch {
+                delay(VERIFY_RETRY_MS)
+                verifySavedToken(savedToken, fingerprint)
+            }
+        } else {
+            launchMainActivity()
+        }
+    }
+
     private fun verifySavedToken(savedToken: String, fingerprint: String) {
         val request = Request.Builder()
             .url("$SERVER_URL/api/devices/verify-token")
@@ -192,9 +212,7 @@ class DeviceAuthActivity : ComponentActivity() {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    startupScreen = StartupScreen.Recovery("Unable to reach the server. Reconnect or connect fresh.")
-                }
+                runOnUiThread { retryOrOpen(savedToken, fingerprint) }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -207,9 +225,7 @@ class DeviceAuthActivity : ComponentActivity() {
                         response.code == 401 || response.code == 403 -> runOnUiThread {
                             startupScreen = StartupScreen.Recovery("Your session expired or is no longer valid. Reconnect or connect fresh.")
                         }
-                        else -> runOnUiThread {
-                            startupScreen = StartupScreen.Recovery("Device check failed (${response.code}). Reconnect or connect fresh.")
-                        }
+                        else -> runOnUiThread { retryOrOpen(savedToken, fingerprint) }
                     }
                 }
             }
@@ -585,13 +601,7 @@ class DeviceAuthActivity : ComponentActivity() {
         finish()
     }
 
-    private fun getDeviceFingerprint(context: Context): String {
-        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_ID"
-        val mac = getMacAddress()
-        val model = Build.MODEL ?: "UNKNOWN_MODEL"
-        val rawFingerprint = androidId + mac + model
-        return sha256(rawFingerprint)
-    }
+    private fun getDeviceFingerprint(context: Context): String = DeviceIdentity.fingerprint(context)
 
     private fun buildActivationQrLink(fingerprint: String, tvName: String, consoleType: String): String {
         return Uri.Builder()

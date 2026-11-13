@@ -43,6 +43,12 @@ import androidx.tv.material3.Text
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.remember
@@ -97,6 +103,16 @@ class KioskService : Service() {
     private var isButtonAttached = false
     private val activeBillingAmount = mutableStateOf(0.0)
     private val activeBillingMode = mutableStateOf("POSTPAID")
+    // Meter: hidden most of the time, shown at the start, a short peek every
+    // 5 minutes, and always near the end. 0 = green, 1 = amber, 2 = red.
+    private val meterVisible = mutableStateOf(true)
+    private val meterLevel = mutableStateOf(0)
+    // Queue: a short pop-up when someone joins the queue for this screen.
+    private val queueNotice = mutableStateOf<String?>(null)
+    private var queueWaiting = 0
+    private var lastQueueNoticeAt = 0L
+    private var queueNoticeJob: Job? = null
+    private var turnSeconds = 30 * 60
     private var syncStateJob: Job? = null
     private var heartbeatJob: Job? = null
 
@@ -1399,6 +1415,7 @@ class KioskService : Service() {
                             flushOfflineSessions()
                             val oldStatus = deviceStatus
                             cacheDeviceState(data)
+                            onQueueInfo(data)
                             if (!isLiveSession(data)) {
                                 // Server confirms session is not live — clear the pending flag
                                 localSessionEndedPendingServerConfirm = false
@@ -1650,132 +1667,14 @@ class KioskService : Service() {
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 32
-            y = 32
+            // Bottom-right, out of the way of most game HUDs (score, minimap, menus).
+            gravity = Gravity.BOTTOM or Gravity.END
+            x = 24
+            y = 24
         }
 
         overlayView = ComposeView(this).apply {
-            setContent {
-                val text   = timerText.value
-                val isOver = isOvertime.value
-                val isAdm  = isAdminMode.value
-                val amt    = activeBillingAmount.value
-                val mode   = activeBillingMode.value
-                val isLP   = isLoserPaySession
-                val scoreA = loserPayScoreA.toList()
-                val scoreB = loserPayScoreB.toList()
-                val pA     = loserPayPlayerA.value
-                val pB     = loserPayPlayerB.value
-                val round  = childSessionRound.value
-
-                val gradientColors = when {
-                    isAdm  -> listOf(Color(0x804F46E5), Color(0x806366F1))
-                    isLP   -> listOf(Color(0x80B45309), Color(0x80D97706))  // amber for loser pay
-                    isOver -> listOf(Color(0x80DC2626), Color(0x80EF4444))
-                    else   -> listOf(Color(0x80059669), Color(0x8010B981))
-                }
-
-                Column(
-                    modifier = Modifier
-                        .background(
-                            brush = Brush.horizontalGradient(gradientColors),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .border(1.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Main timer row
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = when {
-                                    isAdm  -> "FREE PLAY"
-                                    isOver -> "OVERTIME"
-                                    mode == "PREPAID" -> "TIME LEFT"
-                                    else   -> "TIME ELAPSED"
-                                },
-                                color = Color.White.copy(alpha = 0.8f),
-                                fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp
-                            )
-                            Text(
-                                text = if (isAdm) "∞" else if (isOver) "+$text" else text,
-                                color = Color.White,
-                                fontSize = 18.sp, fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                        Box(Modifier.width(1.dp).height(28.dp).background(Color.White.copy(alpha = 0.3f)))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = when {
-                                    isAdm -> "COST"
-                                    mode == "PREPAID" -> "SPENT (PAID)"
-                                    else -> "BILL AMOUNT"
-                                },
-                                color = Color.White.copy(alpha = 0.8f),
-                                fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp
-                            )
-                            Text(
-                                text = if (isAdm) "FREE" else "KES ${amt.toInt()}",
-                                color = Color.White,
-                                fontSize = 18.sp, fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
-
-                    // ── Loser Pay Score Tally (shown only when loser pay is active) ──
-                    if (isLP && (scoreA.isNotEmpty() || scoreB.isNotEmpty() || round > 0)) {
-                        Box(Modifier.fillMaxWidth().height(0.5.dp).background(Color.White.copy(0.25f)))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("⚔", fontSize = 9.sp)
-                            // Player A tally
-                            Row(verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(pA.take(6), color = Color.White.copy(0.7f), fontSize = 8.sp)
-                                Text(":", color = Color.White.copy(0.4f), fontSize = 8.sp)
-                                scoreA.forEach { r: Char ->
-                                    Text(
-                                        text = r.toString(),
-                                        color = when {
-                                            r == 'W' -> Color(0xFF4ADE80)
-                                            r == 'L' -> Color(0xFFF87171)
-                                            else     -> Color(0xFFFBBF24)
-                                        },
-                                        fontSize = 9.sp, fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-                            }
-                            Text("|", color = Color.White.copy(0.3f), fontSize = 8.sp)
-                            // Player B tally
-                            Row(verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(pB.take(6), color = Color.White.copy(0.7f), fontSize = 8.sp)
-                                Text(":", color = Color.White.copy(0.4f), fontSize = 8.sp)
-                                scoreB.forEach { r: Char ->
-                                    Text(
-                                        text = r.toString(),
-                                        color = when {
-                                            r == 'W' -> Color(0xFF4ADE80)
-                                            r == 'L' -> Color(0xFFF87171)
-                                            else     -> Color(0xFFFBBF24)
-                                        },
-                                        fontSize = 9.sp, fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-                            }
-                            if (round > 0) Text("R$round", color = Color(0xFFFBBF24), fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
+            setContent { MeterOverlay() }
         }
 
         val lifecycleOwner = CustomLifecycleOwner()
@@ -1855,6 +1754,12 @@ class KioskService : Service() {
         isAdminMode.value = deviceData.optBoolean("is_admin_mode", false)
         activeBillingAmount.value = deviceData.optDouble("active_billing_kes", 0.0)
         activeBillingMode.value = mode
+        updateMeterVisibility(
+            status,
+            mode,
+            deviceData.optInt("seconds_remaining"),
+            deviceData.optInt("seconds_elapsed"),
+        )
 
         if (status == "OVERTIME") {
             isOvertime.value = true
@@ -1867,6 +1772,183 @@ class KioskService : Service() {
                 timerText.value = String.format("%02d:%02d", elapsedTotalMins, elapsedTotalSecs)
             }
         }
+    }
+
+    /**
+     * When the meter shows and in which colour.
+     * Shown: the first 20 s, a 10 s peek every 5 minutes, and all the time near the end.
+     * Pay-first: amber from 5 min left, red from 2 min left and in overtime.
+     * Pay-after: there is no end unless someone is waiting; then the expected turn
+     * (the arcade's average session) is the end: amber 5 min before, red after it.
+     */
+    private fun updateMeterVisibility(status: String, mode: String, secsRemaining: Int, secsElapsed: Int) {
+        val level = when {
+            isAdminMode.value -> 0
+            status == "OVERTIME" -> 2
+            mode == "PREPAID" -> when {
+                secsRemaining <= 120 -> 2
+                secsRemaining <= 300 -> 1
+                else -> 0
+            }
+            queueWaiting > 0 -> when {
+                secsElapsed >= turnSeconds -> 2
+                secsElapsed >= turnSeconds - 300 -> 1
+                else -> 0
+            }
+            else -> 0
+        }
+        meterLevel.value = level
+        meterVisible.value = level > 0 || secsElapsed < 20 || (secsElapsed % 300) < 10
+    }
+
+    /** Queue info from the 2-second sync: pop up a short notice when someone joins. */
+    private fun onQueueInfo(data: JSONObject) {
+        turnSeconds = data.optInt("turn_seconds", turnSeconds).coerceAtLeast(300)
+        val queue = data.optJSONObject("queue")
+        val waiting = queue?.optInt("waiting_count", 0) ?: 0
+        val previous = queueWaiting
+        queueWaiting = waiting
+        if (waiting <= 0) {
+            queueNotice.value = null
+            return
+        }
+        val now = System.currentTimeMillis()
+        // A new player joined, or a reminder every 10 minutes while people wait.
+        val joined = waiting > previous
+        val remind = now - lastQueueNoticeAt > 10 * 60 * 1000L
+        if (!joined && !remind) return
+        if (!isLiveSession(data)) return
+        lastQueueNoticeAt = now
+        val next = queue?.optJSONObject("next_ticket")
+        val nextName = next?.optString("player_name", "")?.takeIf { it.isNotBlank() && it != "null" }
+        val nextNo = next?.optInt("ticket_number", 0) ?: 0
+        val who = when {
+            nextName != null && nextNo > 0 -> "Next: $nextName (#$nextNo)"
+            nextName != null -> "Next: $nextName"
+            nextNo > 0 -> "Next: ticket #$nextNo"
+            else -> null
+        }
+        val head = if (waiting == 1) "1 player is waiting for this screen" else "$waiting players are waiting for this screen"
+        queueNotice.value = if (who != null) "$head\n$who" else head
+        queueNoticeJob?.cancel()
+        queueNoticeJob = serviceScope.launch {
+            delay(12_000)
+            queueNotice.value = null
+        }
+    }
+
+    @Composable
+    private fun MeterOverlay() {
+        val text = timerText.value
+        val isOver = isOvertime.value
+        val isAdm = isAdminMode.value
+        val amt = activeBillingAmount.value
+        val mode = activeBillingMode.value
+        val level = meterLevel.value
+        val visible = meterVisible.value || isOver
+        val notice = queueNotice.value
+
+        // Solid dark background + a coloured edge: the numbers stay readable over any game.
+        val accent by animateColorAsState(
+            targetValue = when {
+                isAdm -> Color(0xFF818CF8)
+                level >= 2 -> Color(0xFFEF4444)
+                level == 1 -> Color(0xFFF59E0B)
+                else -> Color(0xFF22C55E)
+            },
+            animationSpec = tween(600),
+            label = "meterAccent",
+        )
+
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            AnimatedVisibility(visible = notice != null, enter = fadeIn(tween(400)), exit = fadeOut(tween(800))) {
+                Column(
+                    modifier = Modifier
+                        .background(Color(0xE6111827), RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0xFF38BDF8), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    (notice ?: "").split("\n").forEachIndexed { i, line ->
+                        Text(
+                            text = line,
+                            color = if (i == 0) Color.White else Color(0xFFBAE6FD),
+                            fontSize = if (i == 0) 12.sp else 11.sp,
+                            fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = visible, enter = fadeIn(tween(500)), exit = fadeOut(tween(1200))) {
+                Column(
+                    modifier = Modifier
+                        .background(Color(0xD90B0F19), RoundedCornerShape(10.dp))
+                        .border(1.5.dp, accent, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.size(7.dp).background(accent, RoundedCornerShape(50)))
+                        Text(
+                            text = when {
+                                isAdm -> "FREE"
+                                isOver -> "+$text"
+                                else -> text
+                            },
+                            color = if (level >= 1 && !isAdm) accent else Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                        if (!isAdm) {
+                            Text(
+                                text = "KES ${amt.toInt()}",
+                                color = Color(0xFFE2E8F0),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                    Text(
+                        text = when {
+                            isAdm -> "Free play"
+                            isOver -> "Overtime"
+                            mode == "PREPAID" && level >= 1 -> "Time almost up"
+                            mode == "PREPAID" -> "Time left"
+                            level >= 2 -> "Turn over, others waiting"
+                            level == 1 -> "Others waiting"
+                            else -> "Playing"
+                        },
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    if (isLoserPaySession) LoserPayTally()
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun LoserPayTally() {
+        val scoreA = loserPayScoreA.toList()
+        val scoreB = loserPayScoreB.toList()
+        val round = childSessionRound.value
+        if (scoreA.isEmpty() && scoreB.isEmpty() && round <= 0) return
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(loserPayPlayerA.value.take(6), color = Color(0xFFCBD5E1), fontSize = 9.sp)
+            scoreA.forEach { r -> Text(r.toString(), color = tallyColor(r), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold) }
+            Text("|", color = Color(0x80FFFFFF), fontSize = 9.sp)
+            Text(loserPayPlayerB.value.take(6), color = Color(0xFFCBD5E1), fontSize = 9.sp)
+            scoreB.forEach { r -> Text(r.toString(), color = tallyColor(r), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold) }
+            if (round > 0) Text("R$round", color = Color(0xFFFBBF24), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+
+    private fun tallyColor(r: Char) = when (r) {
+        'W' -> Color(0xFF4ADE80)
+        'L' -> Color(0xFFF87171)
+        else -> Color(0xFFFBBF24)
     }
 
     private fun removeTimerOverlay() {
@@ -2102,13 +2184,7 @@ class KioskService : Service() {
         return "02:00:00:00:00:00"
     }
 
-    private fun getDeviceFingerprint(): String {
-        val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_ID"
-        val mac = getMacAddress()
-        val model = Build.MODEL ?: "UNKNOWN_MODEL"
-        val rawFingerprint = androidId + mac + model
-        return sha256(rawFingerprint)
-    }
+    private fun getDeviceFingerprint(): String = DeviceIdentity.fingerprint(this)
 
     private fun sha256(input: String): String {
         val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
