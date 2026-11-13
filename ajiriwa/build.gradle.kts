@@ -21,6 +21,14 @@ val enabledModules = extra["featureModules.enabled"] as List<String>
 val moduleManifest = extra["featureModules.manifest"] as File?
 val moduleGenSrc = extra["featureModules.genSrc"] as File
 
+// ── Brand: launcher icon + app name (src/brands/<brand>/res, made by tools/icons/make_icons.py) ──
+// -Pajiriwa.brand=ajiriwa|housing|resume wins; otherwise a build with Properties but no Orders
+// is a housing app, everything else is the Ajiriwa business app.
+val appBrand: String = (findProperty("ajiriwa.brand") as String?)?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+    ?: if ("properties" in enabledModules && "orders" !in enabledModules) "housing" else "ajiriwa"
+if (!file("src/brands/$appBrand/res").exists()) throw GradleException("Unknown ajiriwa.brand '$appBrand' (see src/brands/)")
+logger.lifecycle("[ajiriwa] brand: $appBrand")
+
 // ── Release version + signing (set by tools/server-build; local builds stay 1 / unsigned) ──
 val releaseVersionCode = (findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
 val releaseVersionName = (findProperty("appVersionName") as String?) ?: "1.0"
@@ -70,6 +78,7 @@ android {
     sourceSets {
         getByName("main") {
             kotlin.directories.add(moduleGenSrc.path)
+            res.directories.add("src/brands/$appBrand/res")
             enabledModules.forEach { module ->
                 kotlin.directories.add("src/module/$module/java")
                 if (file("src/module/$module/res").exists()) res.directories.add("src/module/$module/res")
