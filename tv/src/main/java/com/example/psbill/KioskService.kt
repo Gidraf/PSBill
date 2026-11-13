@@ -1439,6 +1439,7 @@ class KioskService : Service() {
                 "&current_game=${java.net.URLEncoder.encode(curGame, "UTF-8")}" +
                 "&hdmi_connected=$hdmiConnectedFlag" +
                 "&console_state=${consoleStateName()}" +
+                "&backup_wifi_state=${BackupWifi.state(this)}" +
                 "&uptime_seconds=$uptimeSeconds" +
                 "&topup_seq=$lastTopupSeq" +
                 "&queued_overtime_seconds=$queuedOvertimeSecs"
@@ -1486,6 +1487,7 @@ class KioskService : Service() {
                             cacheDeviceState(data)
                             onQueueInfo(data)
                             onTopupRequest(data)
+                            BackupWifi.onSync(this@KioskService, data)
                             if (!isLiveSession(data)) {
                                 // Server confirms session is not live — clear the pending flag
                                 localSessionEndedPendingServerConfirm = false
@@ -1598,7 +1600,7 @@ class KioskService : Service() {
                 lockScreenWatchdogHandler = null
                 return
             }
-            if (!LockActivity.isLockActivityVisible && !AppUpdater.installInProgress) {
+            if (!LockActivity.isLockActivityVisible && !AppUpdater.installInProgress && !BackupWifi.askOpen) {
                 // Lock screen was pushed to background (HOME, YouTube, network panel, etc.)
                 Log.w(TAG, "Watchdog: lock screen not visible while device is LOCKED — relaunching")
                 val relaunch = Intent(this@KioskService, LockActivity::class.java).apply {

@@ -336,6 +336,7 @@ fun PSBillAppMainView() {
     var autoReloginTried by remember { mutableStateOf(false) }
     var showApiConfig by remember { mutableStateOf(false) }
     var authExpiryHandled by remember { mutableStateOf(false) }
+    var renewTried by remember { mutableStateOf(false) }
     var showPasswordInSettings by remember { mutableStateOf(false) }
     var isLoggingIn by remember { mutableStateOf(false) }
 
@@ -416,6 +417,7 @@ fun PSBillAppMainView() {
 
                     token = tokenFromLogin
                     authExpiryHandled = false
+                    renewTried = false
                     autoReloginTried = false
                     showApiConfig = false
                     SavedLogin.save(context, password)
@@ -432,6 +434,24 @@ fun PSBillAppMainView() {
     fun logoutExpiredToken() {
         if (authExpiryHandled) return
         authExpiryHandled = true
+        // First try to renew the login (works up to 7 days after it ran out, e.g. after an outage).
+        val old = token
+        if (old.isNotBlank() && !renewTried) {
+            renewTried = true
+            LoginRenewal.renew(INTERNAL_SERVER_URL, old) { fresh, _ ->
+                (context as? ComponentActivity)?.runOnUiThread {
+                    if (fresh != null) {
+                        token = fresh
+                        prefs.edit().putString("auth_token", fresh).apply()
+                        authExpiryHandled = false
+                    } else {
+                        authExpiryHandled = false
+                        logoutExpiredToken()
+                    }
+                }
+            }
+            return
+        }
         // Saved password: sign back in silently once instead of showing the login screen.
         val saved = SavedLogin.password(context)
         if (!autoReloginTried && !saved.isNullOrBlank() && emailInput.isNotBlank()) {
@@ -686,6 +706,25 @@ fun PSBillAppMainView() {
             }
         })
         return true
+    }
+
+    // Renew the login while online once less than a day is left (no-op offline).
+    LaunchedEffect(token) {
+        while (token.isNotBlank()) {
+            val current = token
+            if (LoginRenewal.due(current)) {
+                LoginRenewal.renew(INTERNAL_SERVER_URL, current) { fresh, _ ->
+                    if (fresh != null) (context as? ComponentActivity)?.runOnUiThread {
+                        if (token == current) {
+                            token = fresh
+                            renewTried = false
+                            prefs.edit().putString("auth_token", fresh).apply()
+                        }
+                    }
+                }
+            }
+            delay(30 * 60_000L)
+        }
     }
 
     LaunchedEffect(token, reportRange) {

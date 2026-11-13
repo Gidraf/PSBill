@@ -73,6 +73,11 @@ import java.util.Locale
 
 class LockActivity : ComponentActivity() {
 
+    // The system "save this network?" page for the backup hotspot (BackupWifi)
+    private val backupWifiAsk = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { BackupWifi.onAskResult(this, it.resultCode, it.data) }
+
     private val projectionManager by lazy {
         getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     }
@@ -512,6 +517,21 @@ class LockActivity : ComponentActivity() {
                 // no staff logged in, and it has stayed that way for 2 minutes. Any change
                 // (a session starts, a bill shows) cancels the wait. A playing session is
                 // never interrupted: this screen is not shown while someone plays.
+                // Backup hotspot: open the system "save network" page once the TV has been idle
+                // for 2 minutes (staff press OK on the remote). Asked again a day later if skipped.
+                LaunchedEffect(showInvoiceDialog, hasEndedSession, isAdminLoggedIn) {
+                    while (true) {
+                        kotlinx.coroutines.delay(UPDATE_IDLE_MS)
+                        val idle = isLockActivityVisible && !showInvoiceDialog && !hasEndedSession && !isAdminLoggedIn &&
+                            KioskService.activeDeviceStatus == "LOCKED" && !AppUpdater.installInProgress
+                        val ask = if (idle) BackupWifi.pendingAsk(this@LockActivity) else null
+                        if (ask != null) {
+                            BackupWifi.markAsked(this@LockActivity)
+                            try { backupWifiAsk.launch(ask) } catch (e: Exception) { BackupWifi.onAskResult(this@LockActivity, RESULT_CANCELED, null) }
+                        }
+                    }
+                }
+
                 LaunchedEffect(updateState.ready, updateState.hint, showInvoiceDialog, hasEndedSession, isAdminLoggedIn) {
                     fun idle() = isLockActivityVisible && !showInvoiceDialog && !hasEndedSession && !isAdminLoggedIn
                         && KioskService.activeDeviceStatus == "LOCKED"
@@ -1111,7 +1131,8 @@ class LockActivity : ComponentActivity() {
         // pushed us to the background, immediately relaunch to reclaim the foreground.
         // The 300ms delay gives the system time to finish its transition before we override it.
         if ((KioskService.activeDeviceStatus == "LOCKED"
-            || KioskService.localSessionEndedPendingServerConfirm) && !AppUpdater.installInProgress) {
+            || KioskService.localSessionEndedPendingServerConfirm) && !AppUpdater.installInProgress
+            && !BackupWifi.askOpen) {
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 // Double-check: only relaunch if we haven't been legitimately unlocked yet
                 if (KioskService.activeDeviceStatus == "LOCKED"

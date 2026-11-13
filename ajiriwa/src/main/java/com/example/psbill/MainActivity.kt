@@ -455,7 +455,10 @@ class MainActivity : ComponentActivity() {
             })
         }
 
-        val handleAuthError = {
+        // A refused login is renewed first (works up to 7 days after it ran out, e.g. after
+        // the lounge internet was down); only when the server refuses that too do we sign out.
+        val renew = remember { object { var inFlight = false; var failedFor = ""; var lastAt = 0L } }
+        val signOut = {
             runOnUiThread {
                 authToken = ""
                 partnerId = ""
@@ -470,6 +473,48 @@ class MainActivity : ComponentActivity() {
                     apply()
                 }
                 Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_LONG).show()
+            }
+        }
+        val handleAuthError: () -> Unit = {
+            val old = authToken
+            // refused again right after a renewal: the account is the problem, not the login age
+            if (old.isEmpty() || old == renew.failedFor || System.currentTimeMillis() - renew.lastAt < 60_000L) {
+                signOut()
+            } else if (!renew.inFlight) {
+                renew.inFlight = true
+                com.example.psbill.core.LoginRenewal.renew(apiBaseUrl(serverDomain), old) { fresh, _ ->
+                    runOnUiThread {
+                        renew.inFlight = false
+                        if (fresh != null && authToken == old) {
+                            renew.lastAt = System.currentTimeMillis()
+                            authToken = fresh
+                            getSharedPreferences("AttenderPrefs", Context.MODE_PRIVATE).edit()
+                                .putString("auth_token", fresh).apply()
+                        } else if (fresh == null) {
+                            renew.failedFor = old
+                            signOut()
+                        }
+                    }
+                }
+            }
+        }
+
+        // Renew the login while online once less than a day is left (no-op offline).
+        LaunchedEffect(authToken) {
+            while (authToken.isNotEmpty()) {
+                val current = authToken
+                if (com.example.psbill.core.LoginRenewal.due(current)) {
+                    com.example.psbill.core.LoginRenewal.renew(apiBaseUrl(serverDomain), current) { fresh, _ ->
+                        if (fresh != null) runOnUiThread {
+                            if (authToken == current) {
+                                authToken = fresh
+                                getSharedPreferences("AttenderPrefs", Context.MODE_PRIVATE).edit()
+                                    .putString("auth_token", fresh).apply()
+                            }
+                        }
+                    }
+                }
+                kotlinx.coroutines.delay(30 * 60_000L)
             }
         }
 

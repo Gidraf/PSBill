@@ -103,6 +103,14 @@ fun PSBillScreensConfigView(
         }
     }
     LaunchedEffect(token) { if (token.isNotBlank()) loadPricing() }
+    // The staff phone's hotspot the TVs fall back to (Backup WiFi button on the list).
+    var backupWifi by remember { mutableStateOf<JSONObject?>(null) }
+    var showBackupWifi by remember { mutableStateOf(false) }
+    fun loadBackupWifi() {
+        api.get("/api/v1/kiosk/backup-wifi") { code, body ->
+            if (code in 200..299) backupWifi = runCatching { JSONObject(body) }.getOrNull()
+        }
+    }
 
     fun authorizedBuilder(url: String): Request.Builder {
         val builder = Request.Builder().url(url)
@@ -374,6 +382,24 @@ fun PSBillScreensConfigView(
         )
     }
 
+    if (showBackupWifi) {
+        BackupWifiDialog(
+            current = backupWifi,
+            nodes = nodes,
+            onDismiss = { showBackupWifi = false },
+            onSave = { body, done ->
+                api.put("/api/v1/kiosk/backup-wifi", body) { code, text ->
+                    if (code in 200..299) {
+                        backupWifi = runCatching { JSONObject(text) }.getOrNull()
+                        api.toast("Saved - each TV asks to save it once it is idle (press OK on the TV)")
+                        showBackupWifi = false
+                        done(null)
+                    } else done(api.errorText(code, text, "Could not save"))
+                }
+            },
+        )
+    }
+
     val playing = nodes.count { screenStatus(it).first in setOf("PLAYING", "OVERTIME", "WANTS TIME", "CONSOLE OFF") }
     val toPay = nodes.count { screenStatus(it).first == "TO PAY" }
     val free = nodes.count { screenStatus(it).first == "FREE" }
@@ -384,6 +410,7 @@ fun PSBillScreensConfigView(
                 TextButton(onClick = { loadPricing(); showPricing = true }) {
                     Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Prices")
                 }
+                TextButton(onClick = { loadBackupWifi(); showBackupWifi = true }) { Text("Backup WiFi") }
                 if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 else IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "Refresh") }
             }
@@ -941,6 +968,81 @@ private fun topupMessage(body: String, name: String): String? = runCatching {
 }.getOrNull()
 
 /** Turn length, overtime price and rush hours for the whole business. */
+@Composable
+private fun BackupWifiDialog(
+    current: JSONObject?,
+    nodes: List<JSONObject>,
+    onDismiss: () -> Unit,
+    onSave: (JSONObject, (String?) -> Unit) -> Unit,
+) {
+    var ssid by remember(current) { mutableStateOf(current?.optString("ssid").orEmpty()) }
+    var password by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val hasPassword = current?.optBoolean("has_password") == true
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Backup WiFi (phone hotspot)") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "When the lounge WiFi is down, turn on this phone's hotspot. The TVs that saved it join it, " +
+                        "so the screens stay in touch through the phone's data. Sessions keep running either way.",
+                    color = PSBillThemeColors.TextSecondary, fontSize = 13.sp
+                )
+                OutlinedTextField(
+                    ssid, { ssid = it.take(32) }, singleLine = true,
+                    label = { Text("Hotspot name") },
+                    supportingText = { Text("Exactly as in the phone's hotspot settings. Empty = no backup") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    password, { password = it.take(63) }, singleLine = true,
+                    label = { Text("Hotspot password") },
+                    placeholder = { Text(if (hasPassword) "Saved - type to change" else "8 to 63 characters") },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (nodes.isNotEmpty() && current?.optString("ssid").orEmpty().isNotBlank()) {
+                    Text("On the TVs", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold)
+                    nodes.forEach { n ->
+                        val st = when (n.optString("backup_wifi_state")) {
+                            "saved" -> "saved" to PsTone.Good
+                            "ask" -> "press OK on the TV when it asks" to PsTone.Warn
+                            "suggested" -> "add it by hand in the TV's WiFi settings" to PsTone.Warn
+                            else -> "not yet (TV app update or sync pending)" to PSBillThemeColors.TextSecondary
+                        }
+                        Text("${nodeName(n)}: ${st.first}", color = st.second, fontSize = 12.sp)
+                    }
+                }
+                error?.let { Text(it, color = PsTone.Bad, fontSize = 13.sp) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !saving, onClick = {
+                val name = ssid.trim()
+                if (name.isNotEmpty() && password.isEmpty() && !hasPassword) {
+                    error = "Type the hotspot password"; return@TextButton
+                }
+                if (password.isNotEmpty() && password.length < 8) {
+                    error = "The password must be at least 8 characters"; return@TextButton
+                }
+                saving = true; error = null
+                val body = JSONObject().apply {
+                    put("ssid", name)
+                    // keep the saved password when the field is left empty
+                    put("password", password.ifEmpty { if (hasPassword && name == current?.optString("ssid")) KEEP_PASSWORD else "" })
+                }
+                onSave(body) { err -> saving = false; error = err }
+            }) { Text(if (saving) "Saving..." else "Save") }
+        },
+        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Sent as the password to keep the one already saved (the server never returns it). */
+private const val KEEP_PASSWORD = "\u0000keep"
+
 @Composable
 private fun PricingRulesDialog(
     current: JSONObject?,
