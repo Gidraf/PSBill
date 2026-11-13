@@ -201,6 +201,13 @@ class LockActivity : ComponentActivity() {
             status !in setOf("LOCKED", "STOPPED", "PAUSED", "ENDED", "FINISHED", "PENDING")
     }
 
+    // A game or its price changed on the dashboard/app: refresh the cards now.
+    private val gamesReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            fetchGamesFromServer(silent = true)
+        }
+    }
+
     private val syncReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val syncData = intent?.getStringExtra("sync_data")
@@ -434,6 +441,13 @@ class LockActivity : ComponentActivity() {
         hdmiConnected = prefs.getBoolean("hdmi_connected", true)
         if (arcadeName.isEmpty()) {
             arcadeName = getArcadeDisplayName()
+        }
+
+        val gamesFilter = IntentFilter("com.example.psbill.ACTION_GAMES_UPDATED")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(gamesReceiver, gamesFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            ContextCompat.registerReceiver(this, gamesReceiver, gamesFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
         }
 
         val syncFilter = IntentFilter("com.example.psbill.ACTION_SYNC_DATA")
@@ -1068,6 +1082,9 @@ class LockActivity : ComponentActivity() {
         try {
             unregisterReceiver(syncReceiver)
         } catch (e: Exception) {}
+        try {
+            unregisterReceiver(gamesReceiver)
+        } catch (e: Exception) {}
     }
 
     // Back is blocked via dispatchKeyEvent — no onBackPressed override needed
@@ -1240,6 +1257,8 @@ fun GameCard(
     val coverImageStreamUrl = game.cleanStr("cover_image_stream_url", "")
     val coverImageDataUrl = game.cleanStr("cover_image_data_url", "")
     val isLoserPay      = game.optBoolean("loser_pay_available", false)
+    val ratePerMin      = game.optDouble("base_rate_per_minute", 0.0).let { if (it.isNaN()) 0.0 else it }
+    val minCharge       = game.optDouble("minimum_charge", 0.0).let { if (it.isNaN()) 0.0 else it }
 
     var isFocused by remember { mutableStateOf(false) }
     var showActions by remember { mutableStateOf(false) }
@@ -1279,6 +1298,31 @@ fun GameCard(
                     modifier = Modifier.fillMaxSize()
                 )
 
+                // Price tag, top-right: per minute, and the minimum charge.
+                if (ratePerMin > 0) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .background(androidx.compose.ui.graphics.Color(0xE6FBBF24), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = "KES ${priceText(ratePerMin)}/min",
+                            color = androidx.compose.ui.graphics.Color(0xFF111827),
+                            fontSize = 13.sp, fontWeight = FontWeight.ExtraBold
+                        )
+                        if (minCharge > 0) {
+                            Text(
+                                text = "Min KES ${priceText(minCharge)}",
+                                color = androidx.compose.ui.graphics.Color(0xFF374151),
+                                fontSize = 10.sp, fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 // Bottom name gradient
                 Box(
                     modifier = Modifier
@@ -1316,6 +1360,9 @@ fun GameCard(
         }
     }
 }
+
+private fun priceText(v: Double): String =
+    if (v % 1.0 == 0.0) v.toLong().toString() else String.format(Locale.US, "%.1f", v)
 
 @Composable
 fun QueueTicketRow(ticket: JSONObject) {

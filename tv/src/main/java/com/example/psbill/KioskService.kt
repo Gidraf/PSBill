@@ -1026,6 +1026,9 @@ class KioskService : Service() {
                         }
                     }
                 }
+                "games_updated" -> {
+                    sendBroadcast(Intent("com.example.psbill.ACTION_GAMES_UPDATED").setPackage(packageName))
+                }
                 "update_timer" -> {
                     Handler(Looper.getMainLooper()).post {
                         cacheDeviceState(data)
