@@ -823,11 +823,18 @@ private fun LiveBill(node: JSONObject) {
     } else {
         val elapsed = node.optInt("seconds_elapsed") + node.optInt("seconds_elapsed_overtime") + ticks
         val minCharge = node.optDouble("minimum_charge_kes", 0.0)
-        val bill = maxOf(total, minCharge, elapsed / 60.0 * rate)
+        // Played past the turn while others waited: those minutes cost the overtime price.
+        val queued = node.optInt("queued_overtime_seconds", 0).coerceIn(0, elapsed)
+        val otRate = node.optDouble("overtime_rate_per_minute_kes", 0.0).let { if (it.isNaN() || it <= 0) rate else it }
+        val bill = maxOf(total, minCharge, (elapsed - queued) / 60.0 * rate + queued / 60.0 * otRate)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PsStat("Bill so far", kes(Math.round(bill).toDouble()), PsTone.Good, Modifier.weight(1f))
             PsStat("Playing for", clock(elapsed), PSBillThemeColors.TextPrimary, Modifier.weight(1f))
         }
         Text(if (rate > 0) "${kes(rate)}/min, at least ${kes(minCharge)}" else "", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+        if (queued > 0) {
+            Text("Overtime ${clock(queued)} at ${kes(otRate)}/min - someone is waiting. The player was told on the TV.",
+                color = PsTone.Warn, fontSize = 13.sp)
+        }
     }
 }
