@@ -159,6 +159,15 @@ fun ReadyToPlayContent(
     LaunchedEffect(games.size) {
         if (games.isNotEmpty()) runCatching { firstCard.requestFocus() }
     }
+    // The queue decides the game: the next ticket's game starts at once, any other game asks the
+    // attendant first (the server enforces it; this only shows it). Called tickets come first.
+    val next = queueTickets
+        .filter { it.cleanStr("status").uppercase() in setOf("CALLED", "WAITING") }
+        .sortedBy { if (it.cleanStr("status").uppercase() == "CALLED") 0 else 1 }
+        .firstOrNull()
+    val nextGame = next?.cleanStr("game_name")?.takeIf { it.isNotBlank() && !it.equals("any", true) }
+    fun isNext(g: JSONObject) = nextGame != null && g.cleanStr("game_name").equals(nextGame, true)
+    val ordered = if (nextGame == null) games else games.sortedBy { if (isNext(it)) 0 else 1 }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(28.dp),
@@ -176,6 +185,12 @@ fun ReadyToPlayContent(
                     "Choose with the arrows and press OK. You pay for the time you play.",
                 color = LockColors.Muted, fontSize = 15.sp
             )
+            if (nextGame != null) {
+                Text(
+                    "Next in the queue: $nextGame (#${next?.optInt("ticket_number")}). Another game needs the attendant's OK.",
+                    color = LockColors.Warn, fontSize = 15.sp, fontWeight = FontWeight.Bold
+                )
+            }
             when {
                 isLoading -> Box(Modifier.fillMaxWidth().height(290.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = LockColors.Accent, modifier = Modifier.size(44.dp))
@@ -198,8 +213,8 @@ fun ReadyToPlayContent(
                     horizontalArrangement = Arrangement.spacedBy(22.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                 ) {
-                    items(games.size) { i ->
-                        val game = games[i]
+                    items(ordered.size) { i ->
+                        val game = ordered[i]
                         Box(if (i == 0) Modifier.focusRequester(firstCard) else Modifier) {
                             GameCard(
                                 game = game,
@@ -208,6 +223,17 @@ fun ReadyToPlayContent(
                                     if (name.isNotEmpty()) onGameSelect(name)
                                 }
                             )
+                            if (nextGame != null) {
+                                val mine = isNext(game)
+                                Text(
+                                    if (mine) "NEXT IN QUEUE" else "ASK ATTENDANT",
+                                    color = if (mine) Color.Black else Color.White,
+                                    fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp)
+                                        .background(if (mine) LockColors.Accent else Color(0xCC7C2D12), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
