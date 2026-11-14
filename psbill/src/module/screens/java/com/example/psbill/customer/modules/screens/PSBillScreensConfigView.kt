@@ -371,6 +371,8 @@ fun PSBillScreensConfigView(
             },
             activityTab = { ScreenActivitySection(api, openNode, onRefresh) },
             shotsTab = { ScreenShotsSection(api, openNode) },
+            showShots = pricing?.optBoolean("screenshots_enabled") == true &&
+                openNode.optString("screenshot_support") != "black",
         )
         return
     }
@@ -508,12 +510,14 @@ private fun ScreenDetail(
     queueForm: @Composable () -> Unit,
     activityTab: @Composable () -> Unit = {},
     shotsTab: @Composable () -> Unit = {},
+    showShots: Boolean = false,
 ) {
     val name = nodeName(node)
     var ticketForActions by remember { mutableStateOf<JSONObject?>(null) }
     val (label, tone) = screenStatus(node)
     var tab by remember { mutableStateOf(0) }
-    val tabs = listOf("Control", "Queue (${queueTickets.size})", "History", "Activity", "Shots")
+    val tabs = listOf("Control", "Queue (${queueTickets.size})", "History", "Activity") + (if (showShots) listOf("Shots") else emptyList())
+    if (tab >= tabs.size) tab = 0
 
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -1089,6 +1093,7 @@ private fun PricingRulesDialog(
     var rushOn by remember(current) { mutableStateOf(current?.optBoolean("rush_hours_enabled") == true) }
     var rush by remember(current) { mutableStateOf(current?.optString("rush_hours").orEmpty().ifBlank { "17:00-22:00" }) }
     var speed by remember(current) { mutableStateOf(current?.optInt("wifi_speed_mbps", 5)?.toString() ?: "5") }
+    var shotsOn by remember(current) { mutableStateOf(current?.optBoolean("screenshots_enabled") == true) }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
@@ -1136,6 +1141,14 @@ private fun PricingRulesDialog(
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Gameplay screenshots", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold)
+                        Text("A picture of each game once a minute (Shots tab). Each TV asks once to capture the screen; " +
+                            "TVs that only give black pictures stop by themselves.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                    }
+                    Switch(checked = shotsOn, onCheckedChange = { shotsOn = it })
+                }
                 error?.let { Text(it, color = PsTone.Bad, fontSize = 13.sp) }
             }
         },
@@ -1143,6 +1156,7 @@ private fun PricingRulesDialog(
             TextButton(enabled = !saving, onClick = {
                 saving = true; error = null
                 val body = JSONObject().apply {
+                    put("screenshots_enabled", shotsOn)
                     put("turn_minutes", turn.toIntOrNull() ?: 30)
                     put("overtime_rate_per_minute", ot.toDoubleOrNull() ?: 0.0)
                     put("rush_hours_enabled", rushOn)

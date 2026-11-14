@@ -915,11 +915,14 @@ class KioskService : Service() {
 
     private fun startScreenshotJob() {
         screenshotJob?.cancel()
+        screenshotJob = null
+        if (!ScreenGrab.wanted(this)) return   // off unless the owner wants it; nothing runs
         screenshotJob = serviceScope.launch {
             // a series during the session (first one 20 s in, then every minute) so the
             // owner can check the game being played matches the one paid for
             delay(SHOT_FIRST_MS)
             while (true) {
+                if (!ScreenGrab.wanted(this@KioskService)) break
                 if (deviceStatus == "ACTIVE" || deviceStatus == "OVERTIME") {
                     captureAndUploadScreenshot()
                 }
@@ -938,7 +941,23 @@ class KioskService : Service() {
         val deviceId = getKioskDeviceId()
         val identifier = if (deviceId.isNotEmpty()) deviceId else getMacAddress()
         val game = currentGame ?: ""
-        ScreenGrab.shoot { bytes, dark -> uploadScreenshotBytes(identifier, bytes, dark, game) }
+        ScreenGrab.shoot { bytes, dark ->
+            // black frames are never uploaded; after a few in a row this TV stops trying
+            if (ScreenGrab.noteResult(this, dark)) reportCaptureUnsupported(identifier)
+            else if (!dark) uploadScreenshotBytes(identifier, bytes, false, game)
+        }
+    }
+
+    private fun reportCaptureUnsupported(deviceIdOrMac: String) {
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("unsupported", "1").build()
+        val token = getEncryptedPrefs(this).getString("auth_token", "") ?: ""
+        val req = Request.Builder().url("${apiBaseUrl(serverDomain)}/api/v1/kiosk/devices/$deviceIdOrMac/screenshots")
+            .header("Authorization", "Bearer $token").header("X-Device-Fingerprint", getDeviceFingerprint())
+            .post(body).build()
+        client.newCall(req).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: java.io.IOException) {}
+            override fun onResponse(call: Call, response: Response) { response.close() }
+        })
     }
 
     /** Called from the service with the user's consent result (the FGS type must be on first). */
@@ -1665,6 +1684,7 @@ class KioskService : Service() {
                             onLoserPaySync(data)
                             onTopupRequest(data)
                             BackupWifi.onSync(this@KioskService, data)
+                            ScreenGrab.onSync(this@KioskService, data)
                             AppUpdater.onLatest(this@KioskService, data.optJSONObject("app_latest"))
                             // Owner paused / is removing PSBill (RemoteControl): leave the screen alone
                             if (RemoteControl.onSync(this@KioskService, data, deviceId, apiBaseUrl(serverDomain),

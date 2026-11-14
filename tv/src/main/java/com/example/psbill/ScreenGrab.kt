@@ -35,6 +35,37 @@ object ScreenGrab {
 
     val ready: Boolean get() = projection != null
 
+    // ---- owner switch + "this TV only captures black" (all in KioskPrefs) ----
+    private const val PREFS = "KioskPrefs"
+    private const val BLACK_GIVE_UP = 3                       // black shots in a row -> stop
+    private const val BLACK_RETRY_MS = 7L * 24 * 3600_000     // try again a week later
+
+    /** Screenshots wanted: the owner switched them on and this TV is not known to give black frames. */
+    fun wanted(c: android.content.Context): Boolean {
+        val p = c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        return p.getBoolean("shots_enabled", false) && System.currentTimeMillis() > p.getLong("shots_black_until", 0)
+    }
+
+    /** From the TV sync ("screenshots"): off -> give the capture permission back. */
+    fun onSync(c: android.content.Context, data: org.json.JSONObject) {
+        if (!data.has("screenshots")) return
+        val on = data.optBoolean("screenshots", false)
+        c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean("shots_enabled", on).apply()
+        if (!on && ready && !streaming) release()
+    }
+
+    /** After each shot. Returns true when this TV should give up (only black frames). */
+    fun noteResult(c: android.content.Context, dark: Boolean): Boolean {
+        val p = c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        if (!dark) { p.edit().putInt("shots_black_streak", 0).apply(); return false }
+        val n = p.getInt("shots_black_streak", 0) + 1
+        if (n < BLACK_GIVE_UP) { p.edit().putInt("shots_black_streak", n).apply(); return false }
+        p.edit().putInt("shots_black_streak", 0)
+            .putLong("shots_black_until", System.currentTimeMillis() + BLACK_RETRY_MS).apply()
+        if (!streaming) release()
+        return true
+    }
+
     @Synchronized
     fun use(p: MediaProjection) {
         if (p === projection) return

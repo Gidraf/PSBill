@@ -105,6 +105,8 @@ class LockActivity : ComponentActivity() {
      * most once per PROJECTION_ASK_EVERY_MS, so the attendant presses "Start now" once.
      */
     private fun maybeAskProjection() {
+        // only when the owner switched screenshots on (and this TV does not give black frames)
+        if (!ScreenGrab.wanted(this)) return
         if (ScreenGrab.ready || projectionAskOpen || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
         val prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
         if (System.currentTimeMillis() - prefs.getLong("projection_asked_at", 0) < PROJECTION_ASK_EVERY_MS) return
