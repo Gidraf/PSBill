@@ -1101,6 +1101,13 @@ class LockActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (RemoteControl.isPaused(this)) {   // the owner paused PSBill: let go of the TV
+            isLockActivityVisible = false
+            try { stopLockTask() } catch (_: Exception) {}
+            RemoteControl.openPausedPage(this)
+            finish()
+            return
+        }
         isLockActivityVisible = true
         AppUpdater.checkNow(this)
         // Race-condition guard: if KioskService restored an active session and sent ACTION_UNLOCK
@@ -1132,7 +1139,7 @@ class LockActivity : ComponentActivity() {
         // The 300ms delay gives the system time to finish its transition before we override it.
         if ((KioskService.activeDeviceStatus == "LOCKED"
             || KioskService.localSessionEndedPendingServerConfirm) && !AppUpdater.installInProgress
-            && !BackupWifi.askOpen) {
+            && !BackupWifi.askOpen && !RemoteControl.isPaused(this)) {
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 // Double-check: only relaunch if we haven't been legitimately unlocked yet
                 if (KioskService.activeDeviceStatus == "LOCKED"

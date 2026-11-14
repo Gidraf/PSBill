@@ -361,6 +361,7 @@ fun PSBillScreensConfigView(
                     onAdded = { loadScreenDetails(openNode) },
                 )
             },
+            activityTab = { ScreenActivitySection(api, openNode, onRefresh) },
         )
         return
     }
@@ -495,12 +496,13 @@ private fun ScreenDetail(
     onRound: (String?) -> Unit,
     onEndMatch: () -> Unit,
     queueForm: @Composable () -> Unit,
+    activityTab: @Composable () -> Unit = {},
 ) {
     val name = nodeName(node)
     var ticketForActions by remember { mutableStateOf<JSONObject?>(null) }
     val (label, tone) = screenStatus(node)
     var tab by remember { mutableStateOf(0) }
-    val tabs = listOf("Control", "Queue (${queueTickets.size})", "History")
+    val tabs = listOf("Control", "Queue (${queueTickets.size})", "History", "Activity")
 
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -530,6 +532,7 @@ private fun ScreenDetail(
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             when (tab) {
+                3 -> item { activityTab() }
                 0 -> item {
                     if (activeMatch != null) {
                         LoserPayMatchCard(activeMatch, null, busy, onRound, onEndMatch)

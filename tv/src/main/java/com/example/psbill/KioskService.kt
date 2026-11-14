@@ -1102,6 +1102,10 @@ class KioskService : Service() {
                     }
                     startActivity(streamIntent)
                 }
+                "remote_control" -> {
+                    // pause / resume / remove from the dashboard: sync now (the reply carries "remote")
+                    serviceScope.launch { syncStateWithServer() }
+                }
                 "stop_stream" -> {
                     stopScreenStreaming()
                 }
@@ -1488,6 +1492,13 @@ class KioskService : Service() {
                             onQueueInfo(data)
                             onTopupRequest(data)
                             BackupWifi.onSync(this@KioskService, data)
+                            // Owner paused / is removing PSBill (RemoteControl): leave the screen alone
+                            if (RemoteControl.onSync(this@KioskService, data, deviceId, apiBaseUrl(serverDomain),
+                                    token, fingerprint)) {
+                                removeTimerOverlay()
+                                stopLockScreenWatchdog()
+                                return@withContext
+                            }
                             if (!isLiveSession(data)) {
                                 // Server confirms session is not live — clear the pending flag
                                 localSessionEndedPendingServerConfirm = false
@@ -1578,6 +1589,7 @@ class KioskService : Service() {
     }
 
     private fun launchLockScreen(invoiceJson: JSONObject?) {
+        if (RemoteControl.isPaused(this)) return   // paused by the owner: no lock screen
         val intent = Intent(this, LockActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             if (invoiceJson != null) {
@@ -1597,6 +1609,10 @@ class KioskService : Service() {
         override fun run() {
             if (deviceStatus != "LOCKED" && !localSessionEndedPendingServerConfirm) {
                 // Device is no longer locked — stop watchdog
+                lockScreenWatchdogHandler = null
+                return
+            }
+            if (RemoteControl.isPaused(this@KioskService)) {
                 lockScreenWatchdogHandler = null
                 return
             }
@@ -1625,6 +1641,13 @@ class KioskService : Service() {
     }
 
     private fun handleRevocationOrDeactivation() {
+        if (RemoteControl.isRemoving(this)) {
+            // unlinked because the owner removed PSBill: no linking screen, just stop
+            removeTimerOverlay()
+            stopLockScreenWatchdog()
+            stopSelf()
+            return
+        }
         Log.w(TAG, "Device registration is unavailable. Launching recovery screen.")
         removeTimerOverlay()
         stopScreenshotJob()
@@ -1822,6 +1845,7 @@ class KioskService : Service() {
     }
 
     private fun showConsoleCover() {
+        if (RemoteControl.isPaused(this)) return
         try {
             Log.d(TAG, "Console off during a session: covering the HDMI input")
             startActivity(Intent(this, ConsoleOffActivity::class.java).apply {

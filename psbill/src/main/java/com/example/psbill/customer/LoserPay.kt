@@ -58,7 +58,8 @@ class PsApi(
                 val body = response.body?.string().orEmpty()
                 val code = response.code
                 ui {
-                    if (code == 401 || code == 403) onAuthLost() else done(code, body)
+                    // 403 OWNER_ONLY = an attendant tried an owner action: show it, do not sign out
+                    if (code == 401 || (code == 403 && !body.contains("OWNER_ONLY"))) onAuthLost() else done(code, body)
                 }
             }
         })

@@ -65,6 +65,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        if (RemoteControl.isPaused(this)) {   // paused / being removed by the owner (RemoteControl)
+            if (!RemoteControl.isRemoving(this)) startKioskServiceQuietly()
+            RemoteControl.openPausedPage(this)
+            finish()
+            return
+        }
+
         val token = getAuthToken()
 
         if (token.isEmpty()) {
@@ -110,6 +117,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         isMainActivityVisible = true
+        if (RemoteControl.isPaused(this)) {
+            RemoteControl.openPausedPage(this)
+            finish()
+            return
+        }
 
         // Re-check permissions/launcher status on every resume (e.g. returning from Settings)
         if (!Settings.canDrawOverlays(this)) { showSetupScreen(); return }
@@ -125,6 +137,14 @@ class MainActivity : ComponentActivity() {
         } else {
             startPeriodicAppsFetch()
         }
+    }
+
+    /** Paused TVs keep syncing so "resume" from the dashboard reaches them. */
+    private fun startKioskServiceQuietly() {
+        try {
+            val i = Intent(this, KioskService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i) else startService(i)
+        } catch (_: Exception) {}
     }
 
     override fun onPause() {
