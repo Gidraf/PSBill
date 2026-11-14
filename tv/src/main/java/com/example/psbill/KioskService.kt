@@ -225,6 +225,10 @@ class KioskService : Service() {
     private var hdmiNumber = 1
     private var hdmiState = -1
     private var consoleOffSince = 0L
+    // When the console went dark during this session (elapsedRealtime, 0 = it is on); the meter
+    // pauses METER_PAUSE_AFTER_MS later (meterPaused) and runs again when the picture is back.
+    private var consoleDarkSince = 0L
+    @Volatile private var meterPaused = false
     // The console went dark (off, standby, cable out) during this session: when it comes
     // back the HDMI input is opened again, whatever is in front (the TV often leaves the
     // input by itself when the cable is pulled, so there may be no cover to close).
@@ -306,6 +310,9 @@ class KioskService : Service() {
         // Console off this long during a session -> cover the HDMI input (the TV's own
         // no-signal countdown is much longer, so a quick console restart is not covered).
         private const val CONSOLE_OFF_GRACE_MS = 20_000L
+        // Console off (unplugged / standby) this long during a session -> the meter pauses until
+        // it is back (owner, 2026-11-14): a fallen cable does not eat the player's paid minutes.
+        private const val METER_PAUSE_AFTER_MS = 60_000L
         /** Gameplay screenshots: first this long after a start, then one per SHOT_EVERY_MS. */
         private const val SHOT_FIRST_MS = 20_000L
         private const val SHOT_EVERY_MS = 60_000L
@@ -559,6 +566,8 @@ class KioskService : Service() {
                     turnWarningShown = false
                     overtimeNoticeShown = false
                     billNoticeStage = 0
+                    consoleDarkSince = 0L   // a new session: the minute counts from now
+                    meterPaused = false
                     elapsedDrift = 0
                     remainingDrift = 0
                     overtimeDrift = 0
@@ -824,6 +833,7 @@ class KioskService : Service() {
                 if (!isConnected) {
                     offlineSecondsAccumulated++
                 }
+                if (updateMeterPause()) continue   // console off over a minute: time stands still
                 localSecondsElapsed++
 
                 // Apply gentle drift correction toward the server's last known value.
@@ -1645,7 +1655,8 @@ class KioskService : Service() {
                 "&backup_wifi_state=${BackupWifi.state(this)}" +
                 "&uptime_seconds=$uptimeSeconds" +
                 "&topup_seq=$lastTopupSeq" +
-                "&queued_overtime_seconds=$queuedOvertimeSecs"
+                "&queued_overtime_seconds=$queuedOvertimeSecs" +
+                "&meter_paused=$meterPaused"
         
         val securePrefs = getEncryptedPrefs(this)
         val token = securePrefs.getString("auth_token", "") ?: ""
@@ -2080,6 +2091,28 @@ class KioskService : Service() {
         onConsoleState(state)
     }
 
+    /**
+     * True while the meter is paused: a session is on and the console has been off (unplugged or
+     * standby) for METER_PAUSE_AFTER_MS. Not when the player pressed OK on the console page (the TV
+     * says standby but they see the game) or the TV cannot tell the console state.
+     */
+    private fun updateMeterPause(): Boolean {
+        val dark = consoleDarkSince
+        val trustOn = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
+            .getBoolean(ConsoleOffActivity.KEY_TRUST_ON, false)
+        val now = dark > 0L && !trustOn && sessionOnScreen() &&
+            hdmiState >= 0 && hdmiState != android.media.tv.TvInputManager.INPUT_STATE_CONNECTED &&
+            android.os.SystemClock.elapsedRealtime() - dark >= METER_PAUSE_AFTER_MS
+        if (now != meterPaused) {
+            meterPaused = now
+            Log.d(TAG, if (now) "Console off over a minute: meter paused" else "Meter running again")
+            if (!now) serviceScope.launch(Dispatchers.Main) {
+                showNotice("Console back - your time is running again", 8_000)
+            }
+        }
+        return now
+    }
+
     private fun sessionOnScreen(): Boolean =
         deviceStatus != "LOCKED" && deviceStatus != "PENDING" &&
             !localSessionEndedPendingServerConfirm && !LockActivity.isLockActivityVisible
@@ -2097,6 +2130,11 @@ class KioskService : Service() {
         }
         val inSession = sessionOnScreen()
         val canSwitch = inSession && !isSleeping && !RemoteControl.isPaused(this)
+        consoleDarkSince = when {
+            state == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED || !inSession -> 0L
+            consoleDarkSince == 0L -> android.os.SystemClock.elapsedRealtime()
+            else -> consoleDarkSince
+        }
         if (state == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED) {
             consoleOffSince = 0L
             val coverOpen = ConsoleOffActivity.isOpen()

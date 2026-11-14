@@ -145,7 +145,8 @@ private fun ConsoleOffScreen(onOk: () -> Unit) {
             Text("Console off?", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Press the PS button. Your session is still running.",
+                "Press the PS button. Your session is still on: after 1 minute with the console off " +
+                    "your time stops, and it runs again when the console is back.",
                 color = Color(0xFFCBD5E1), fontSize = 12.sp, textAlign = TextAlign.Start
             )
             Spacer(Modifier.height(10.dp))

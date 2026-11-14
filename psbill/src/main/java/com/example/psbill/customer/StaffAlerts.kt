@@ -110,7 +110,7 @@ object StaffAlertRules {
                 out += StaffAlert("offline:$id", true, "${n.name} went offline", "A session is running. Check the TV and its WiFi.")
             }
             if (isLive && n.console == "unplugged" && p.console != "unplugged") {
-                out += StaffAlert("console:$id", true, "${n.name}: console unplugged", "The HDMI cable or console is off during a session.")
+                out += StaffAlert("console:$id", true, "${n.name}: console unplugged", "The HDMI cable or console is off during a session. The meter pauses after 1 minute until it is back.")
             }
         }
         return out

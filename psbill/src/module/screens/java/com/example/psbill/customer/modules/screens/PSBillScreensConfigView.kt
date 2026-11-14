@@ -1103,6 +1103,7 @@ private fun PricingRulesDialog(
     var rush by remember(current) { mutableStateOf(current?.optString("rush_hours").orEmpty().ifBlank { "17:00-22:00" }) }
     var speed by remember(current) { mutableStateOf(current?.optInt("wifi_speed_mbps", 5)?.toString() ?: "5") }
     var shotsOn by remember(current) { mutableStateOf(current?.optBoolean("screenshots_enabled") == true) }
+    var queueStrict by remember(current) { mutableStateOf(current?.optBoolean("queue_strict", true) != false) }
     var amber by remember(current) { mutableStateOf(current?.optInt("bill_amber_kes", 100)?.toString() ?: "100") }
     var red by remember(current) { mutableStateOf(current?.optInt("bill_red_kes", 200)?.toString() ?: "200") }
     var saving by remember { mutableStateOf(false) }
@@ -1130,6 +1131,14 @@ private fun PricingRulesDialog(
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Queued players go first", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold)
+                        Text("While someone is queued for a screen, no one can continue, resume or add time on it. " +
+                            "Turn off to allow extra time at the overtime price.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                    }
+                    Switch(checked = queueStrict, onCheckedChange = { queueStrict = it })
+                }
                 Text("Pay-after meter on the TV", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold)
                 Text("The meter turns amber, then red and blinking, as the bill grows. The player is told when the " +
                     "minimum time is used up and at each colour. 0 = off.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
@@ -1193,6 +1202,7 @@ private fun PricingRulesDialog(
                     put("rush_hours_enabled", rushOn)
                     put("rush_hours", rush.trim())
                     put("wifi_speed_mbps", speed.toIntOrNull() ?: 5)
+                    put("queue_strict", queueStrict)
                     put("bill_amber_kes", amber.toIntOrNull() ?: 0)
                     put("bill_red_kes", red.toIntOrNull() ?: 0)
                 }
