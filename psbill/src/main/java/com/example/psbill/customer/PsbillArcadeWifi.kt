@@ -140,3 +140,114 @@ fun WifiPassForm(serverHost: String, token: String, client: OkHttpClient) {
         if (token.isBlank()) Text("Sign in to give WiFi passes.", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp)
     }
 }
+
+/*
+ * Free WiFi passes and their life (GET /api/v1/kiosk/wifi-passes): a pass ends its minutes
+ * after it was GIVEN, used or not. Waiting = not taken yet, In use, Consumed (taken, time up),
+ * Expired (never taken, time up), Failed (no voucher). Refreshes every 30 s.
+ */
+private val PASS_FILTERS = listOf("" to "All", "waiting" to "Waiting", "in_use" to "In use",
+    "consumed" to "Consumed", "expired" to "Expired", "failed" to "Failed")
+
+@Composable
+fun FreeWifiPassList(serverHost: String, token: String, client: OkHttpClient) {
+    var filter by remember { mutableStateOf("") }
+    var items by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var counts by remember { mutableStateOf(JSONObject()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var tick by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(filter, token) {
+        while (token.isNotBlank()) {
+            val res = withContext(Dispatchers.IO) {
+                runCatching {
+                    client.newCall(Request.Builder()
+                        .url("$serverHost/api/v1/kiosk/wifi-passes?days=2&limit=100" + (if (filter.isNotBlank()) "&state=$filter" else ""))
+                        .header("Authorization", "Bearer $token").build()).execute().use { r ->
+                        r.code to runCatching { JSONObject(r.body?.string().orEmpty()) }.getOrElse { JSONObject() }
+                    }
+                }
+            }
+            res.onSuccess { (code, body) ->
+                if (code in 200..299) {
+                    error = null
+                    val arr = body.optJSONArray("items")
+                    items = (0 until (arr?.length() ?: 0)).map { arr!!.getJSONObject(it) }
+                    counts = body.optJSONObject("counts") ?: JSONObject()
+                    tick = System.currentTimeMillis()
+                } else error = body.optString("error").ifBlank { "Could not load passes ($code)" }
+            }.onFailure { error = it.message ?: "Network error" }
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    // count the time left down between loads
+    val now by produceState(System.currentTimeMillis(), tick) {
+        while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(1_000) }
+    }
+    val drift = ((now - tick) / 1000).coerceAtLeast(0)
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("A pass runs from the moment it is given. Not taken in time = expired.",
+            color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(PASS_FILTERS.size) { i ->
+                val (key, label) = PASS_FILTERS[i]
+                val n = if (key.isBlank()) counts.keys().asSequence().sumOf { counts.optInt(it) } else counts.optInt(key)
+                FilterChip(selected = filter == key, onClick = { filter = key }, label = { Text("$label ($n)") })
+            }
+        }
+        error?.let { Text(it, color = PSBillThemeColors.Amber, fontSize = 12.sp) }
+        if (items.isEmpty() && error == null) {
+            Text("No passes in the last 2 days" + (if (filter.isNotBlank()) " with this status." else "."),
+                color = PSBillThemeColors.TextSecondary, fontSize = 13.sp)
+        }
+        items.forEach { p -> PassRow(p, drift) }
+    }
+}
+
+@Composable
+private fun PassRow(p: JSONObject, drift: Long) {
+    val state = p.optString("state")
+    val (label, tone) = when (state) {
+        "waiting" -> "WAITING" to PsTone.Warn
+        "in_use" -> "IN USE" to PsTone.Good
+        "consumed" -> "CONSUMED" to PsTone.Idle
+        "expired" -> "EXPIRED" to PsTone.Bad
+        else -> "FAILED" to PsTone.Bad
+    }
+    val left = (p.optLong("seconds_left") - drift).coerceAtLeast(0)
+    val used = p.optLong("used_seconds") + (if (state == "in_use") drift else 0)
+    val who = p.optString("name").takeIf { it.isNotBlank() && it != "null" }
+        ?: p.optString("phone").takeIf { it.isNotBlank() && it != "null" } ?: "No phone"
+    val reason = when (p.optString("reason")) {
+        "queue_wait", "portal_queue" -> "while waiting"
+        "session_end" -> "after a game"
+        else -> "given by staff"
+    }
+    val detail = when (state) {
+        "waiting" -> "Not taken yet - expires in ${dur(left)}"
+        "in_use" -> "On WiFi ${dur(used)} - ${dur(left)} left"
+        "consumed" -> "Used ${dur(used)} of ${p.optInt("minutes")} min"
+        "expired" -> "Never taken - expired after ${p.optInt("minutes")} min"
+        else -> p.optString("error").takeIf { it.isNotBlank() && it != "null" } ?: "No voucher made"
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text("$who  -  ${p.optInt("minutes")} min $reason", color = PSBillThemeColors.TextPrimary, fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("${givenAt(p.optString("created_at"))}  -  $detail", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp, maxLines = 2)
+        }
+        PsPill(label, tone)
+    }
+}
+
+private fun dur(secs: Long): String = when {
+    secs >= 3600 -> "${secs / 3600} h ${(secs % 3600) / 60} min"
+    secs >= 60 -> "${secs / 60} min"
+    else -> "${secs} s"
+}
+
+private fun givenAt(iso: String): String = runCatching {
+    val p = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+    "Given " + java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.getDefault()).format(p.parse(iso.take(19))!!)
+}.getOrDefault("")

@@ -88,6 +88,11 @@ fun PSBillWifiView(
                 com.example.psbill.customer.WifiPassForm(serverHost = serverHost, token = token, client = client)
             }
         }
+        if (client != null && serverHost.isNotBlank() && token.isNotBlank()) item {
+            PSBillCard(title = "Free WiFi passes") {
+                com.example.psbill.customer.FreeWifiPassList(serverHost = serverHost, token = token, client = client)
+            }
+        }
         item {
             PSBillCard(title = "📶 Baseya Wi-Fi Voucher Portal") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
