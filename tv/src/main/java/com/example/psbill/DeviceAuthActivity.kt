@@ -15,6 +15,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -285,8 +286,8 @@ class DeviceAuthActivity : ComponentActivity() {
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.width(600.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.width(600.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())
             ) {
                 Text(
                     text = "PlayGate TV Activation",
@@ -339,9 +340,9 @@ class DeviceAuthActivity : ComponentActivity() {
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Show Linking QR Code", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("Show link code + QR", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("Scan QR with Agent App to link", color = Color.Gray, fontSize = 11.sp, textAlign = TextAlign.Center)
+                                Text("Type the code or scan it in the staff app", color = Color.Gray, fontSize = 11.sp, textAlign = TextAlign.Center)
                             }
                         }
                     }
@@ -409,6 +410,25 @@ class DeviceAuthActivity : ComponentActivity() {
                 }
 
                 if (selectedMode == "QR") {
+                    // 6-digit link code for the staff app ("Link code"), renewed before it runs out
+                    var linkCode by remember { mutableStateOf("") }
+                    LaunchedEffect(fingerprint, tvNickname, consoleType) {
+                        while (true) {
+                            val c = withContext(Dispatchers.IO) { fetchLinkCode(fingerprint, tvNickname, consoleType) }
+                            if (c != null) linkCode = c
+                            delay(if (c != null) 10 * 60_000L else 15_000L)
+                        }
+                    }
+                    if (linkCode.length == 6) {
+                        Text("Link code", color = Color.LightGray, fontSize = 13.sp)
+                        Text(linkCode.substring(0, 3) + " " + linkCode.substring(3), color = Color.White,
+                            fontSize = 44.sp, fontWeight = FontWeight.Black, letterSpacing = 6.sp)
+                        Text("In the PSBill staff app: Link code -> type these 6 digits. Or scan the QR.",
+                            color = Color.LightGray, fontSize = 12.sp, textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 24.dp))
+                    } else {
+                        Text("Getting a link code...", color = Color.Gray, fontSize = 12.sp)
+                    }
                     val activationLink = remember(fingerprint, tvNickname, consoleType) {
                         buildActivationQrLink(fingerprint, tvNickname, consoleType)
                     }
@@ -423,7 +443,7 @@ class DeviceAuthActivity : ComponentActivity() {
 
                     Box(
                         modifier = Modifier
-                            .size(220.dp)
+                            .size(170.dp)
                             .background(Color.White, RoundedCornerShape(12.dp))
                             .padding(8.dp),
                         contentAlignment = Alignment.Center
@@ -445,13 +465,6 @@ class DeviceAuthActivity : ComponentActivity() {
                         modifier = Modifier.padding(horizontal = 24.dp)
                     )
 
-                    Text(
-                        text = activationLink,
-                        color = Color.Gray,
-                        fontSize = 10.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 24.dp)
-                    )
 
                     Button(
                         onClick = { 
@@ -466,6 +479,19 @@ class DeviceAuthActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** A 6-digit code the staff type in to link this TV (server keeps it 15 minutes). Null offline. */
+    private fun fetchLinkCode(fingerprint: String, name: String, console: String): String? = try {
+        val body = JSONObject().apply {
+            put("fingerprint", fingerprint); put("device_name", name.trim()); put("console_type", console)
+        }.toString().toRequestBody(JSON_MEDIA_TYPE)
+        client.newCall(Request.Builder().url("$SERVER_URL/api/devices/link-code").post(body).build()).execute().use { r ->
+            if (!r.isSuccessful) null
+            else JSONObject(r.body?.string().orEmpty()).optString("code").takeIf { it.length == 6 }
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "link code: ${e.message}"); null
     }
 
     private fun activateDeviceByKey(key: String, fingerprint: String, name: String, console: String, callback: (Boolean, String?) -> Unit) {

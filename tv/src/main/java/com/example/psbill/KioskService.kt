@@ -301,6 +301,9 @@ class KioskService : Service() {
         // Console off this long during a session -> cover the HDMI input (the TV's own
         // no-signal countdown is much longer, so a quick console restart is not covered).
         private const val CONSOLE_OFF_GRACE_MS = 20_000L
+        /** Gameplay screenshots: first this long after a start, then one per SHOT_EVERY_MS. */
+        private const val SHOT_FIRST_MS = 20_000L
+        private const val SHOT_EVERY_MS = 60_000L
         var mediaProjection: MediaProjection? = null
         var streamEncoder: StreamEncoder? = null
         var activeDeviceStatus: String = "LOCKED"
@@ -473,13 +476,13 @@ class KioskService : Service() {
 
         if (intent != null) {
             when (intent.action) {
-                "START_STREAMING" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        startForeground(1, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        startForeground(1, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-                    }
-                    startScreenStreaming()
+                "START_STREAMING", "PROJECTION_GRANTED" -> {
+                    val code = intent.getIntExtra("result_code", 0)
+                    @Suppress("DEPRECATION")
+                    val data: Intent? = intent.getParcelableExtra("result_data")
+                    val stream = intent.action == "START_STREAMING"
+                    if (data != null) takeProjection(code, data, stream)
+                    else if (stream) startScreenStreaming()
                 }
                 "START_ONLINE_SESSION" -> {
                     val dataStr = intent.getStringExtra("device_data") ?: "{}"
@@ -913,11 +916,14 @@ class KioskService : Service() {
     private fun startScreenshotJob() {
         screenshotJob?.cancel()
         screenshotJob = serviceScope.launch {
+            // a series during the session (first one 20 s in, then every minute) so the
+            // owner can check the game being played matches the one paid for
+            delay(SHOT_FIRST_MS)
             while (true) {
-                delay(300000) // 5 minutes
                 if (deviceStatus == "ACTIVE" || deviceStatus == "OVERTIME") {
                     captureAndUploadScreenshot()
                 }
+                delay(SHOT_EVERY_MS)
             }
         }
     }
@@ -928,61 +934,33 @@ class KioskService : Service() {
     }
 
     private fun captureAndUploadScreenshot() {
-        val proj = mediaProjection ?: return
+        if (!ScreenGrab.ready) return   // no capture permission yet: asked on the idle lock screen
         val deviceId = getKioskDeviceId()
         val identifier = if (deviceId.isNotEmpty()) deviceId else getMacAddress()
-        val width = 640
-        val height = 360
-        
+        val game = currentGame ?: ""
+        ScreenGrab.shoot { bytes, dark -> uploadScreenshotBytes(identifier, bytes, dark, game) }
+    }
+
+    /** Called from the service with the user's consent result (the FGS type must be on first). */
+    private fun takeProjection(resultCode: Int, data: Intent?, thenStream: Boolean) {
+        if (data == null) return
         try {
-            val imageReader = android.media.ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 2)
-            val surface = imageReader.surface
-            
-            val virtualDisplay = proj.createVirtualDisplay(
-                "ScreenshotCapture",
-                width, height, 240,
-                android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                surface, null, null
-            )
-            
-            Handler(Looper.getMainLooper()).postDelayed({
-                try {
-                    val image = imageReader.acquireLatestImage()
-                    if (image != null) {
-                        val planes = image.planes
-                        val buffer = planes[0].buffer
-                        val pixelStride = planes[0].pixelStride
-                        val rowStride = planes[0].rowStride
-                        val rowPadding = rowStride - pixelStride * width
-                        
-                        val bitmap = android.graphics.Bitmap.createBitmap(
-                            width + rowPadding / pixelStride,
-                            height,
-                            android.graphics.Bitmap.Config.ARGB_8888
-                        )
-                        bitmap.copyPixelsFromBuffer(buffer)
-                        image.close()
-                        
-                        val croppedBitmap = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, width, height)
-                        val stream = java.io.ByteArrayOutputStream()
-                        croppedBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, stream)
-                        val jpegBytes = stream.toByteArray()
-                        
-                        uploadScreenshotBytes(identifier, jpegBytes)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Screenshot draw failed: ${e.message}")
-                } finally {
-                    virtualDisplay.release()
-                    imageReader.close()
-                }
-            }, 500)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            }
+            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+            val proj = mpm.getMediaProjection(resultCode, data) ?: return
+            mediaProjection = proj
+            ScreenGrab.use(proj)
+            if (thenStream) startScreenStreaming()
         } catch (e: Exception) {
-            Log.e(TAG, "Screenshot setup failed: ${e.message}")
+            Log.e(TAG, "projection: ${e.message}")
         }
     }
 
-    private fun uploadScreenshotBytes(deviceIdOrMac: String, jpegBytes: ByteArray) {
+    private fun uploadScreenshotBytes(deviceIdOrMac: String, jpegBytes: ByteArray, dark: Boolean = false, game: String = "") {
         val url = "${apiBaseUrl(serverDomain)}/api/v1/kiosk/devices/$deviceIdOrMac/screenshots"
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
@@ -990,6 +968,8 @@ class KioskService : Service() {
                 "screenshot", "screenshot.jpg",
                 RequestBody.create("image/jpeg".toMediaType(), jpegBytes)
             )
+            .addFormDataPart("dark", if (dark) "1" else "0")
+            .addFormDataPart("game", game)
             .build()
             
         val securePrefs = getEncryptedPrefs(this)
@@ -1134,11 +1114,15 @@ class KioskService : Service() {
                     }
                 }
                 "start_stream" -> {
-                    val streamIntent = Intent(this, LockActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        putExtra("action", "request_projection")
+                    if (ScreenGrab.ready) {
+                        startScreenStreaming()
+                    } else {
+                        startActivity(Intent(this, LockActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            putExtra("action", "request_projection")
+                            putExtra("then_stream", true)
+                        })
                     }
-                    startActivity(streamIntent)
                 }
                 "remote_control" -> {
                     // pause / resume / remove from the dashboard: sync now (the reply carries "remote")
@@ -1824,7 +1808,7 @@ class KioskService : Service() {
                 lockScreenWatchdogHandler = null
                 return
             }
-            if (!LockActivity.isLockActivityVisible && !AppUpdater.installInProgress && !BackupWifi.askOpen) {
+            if (!LockActivity.isLockActivityVisible && !AppUpdater.installInProgress && !BackupWifi.askOpen && !LockActivity.projectionAskOpen) {
                 // Lock screen was pushed to background (HOME, YouTube, network panel, etc.)
                 Log.w(TAG, "Watchdog: lock screen not visible while device is LOCKED — relaunching")
                 val relaunch = Intent(this@KioskService, LockActivity::class.java).apply {
@@ -2024,7 +2008,26 @@ class KioskService : Service() {
                     .putString(ConsoleOffActivity.KEY_INPUT_ID, id).apply()
             }
         }
-        val state = try { tim.getInputState(id) } catch (e: Exception) { return }
+        var state = try { tim.getInputState(id) } catch (e: Exception) { return }
+        if (state != android.media.tv.TvInputManager.INPUT_STATE_CONNECTED) {
+            // The console may be on ANOTHER HDMI port than the saved one (the cover then showed with
+            // the game on screen): a port with a picture wins and becomes this screen's port.
+            val other = try {
+                tim.tvInputList.firstOrNull {
+                    it.parentId == null && it.id != id &&
+                        (it.type == android.media.tv.TvInputInfo.TYPE_HDMI || it.id.contains("hdmi", ignoreCase = true)) &&
+                        tim.getInputState(it.id) == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED
+                }?.id
+            } catch (_: Exception) { null }
+            if (other != null) {
+                Log.d(TAG, "Console found on $other (saved port $id has no picture): using it")
+                id = other
+                hdmiInputId = other
+                getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE).edit()
+                    .putString(ConsoleOffActivity.KEY_INPUT_ID, other).apply()
+                state = android.media.tv.TvInputManager.INPUT_STATE_CONNECTED
+            }
+        }
         // Many TVs keep the PORT "connected" whatever the cable does; only the console's CEC
         // input (a child of the port) comes and goes. Follow that too, or a returned cable
         // is never noticed and the TV stays on its home / no-signal screen.
@@ -3081,10 +3084,9 @@ class KioskService : Service() {
     }
 
     private fun startScreenStreaming() {
-        val proj = mediaProjection
         val ws = webSocket
-        if (proj != null && ws != null) {
-            streamEncoder = StreamEncoder(proj, ws)
+        if (ScreenGrab.ready && ws != null && streamEncoder == null) {
+            streamEncoder = StreamEncoder(ws)
             streamEncoder?.start()
         }
     }
@@ -3092,9 +3094,8 @@ class KioskService : Service() {
     private fun stopScreenStreaming() {
         streamEncoder?.stop()
         streamEncoder = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        }
+        // keep the mediaProjection service type: dropping it ends the capture permission,
+        // and the gameplay screenshots still need it
     }
 
 

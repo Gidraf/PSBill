@@ -85,14 +85,41 @@ class LockActivity : ComponentActivity() {
     private val projectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        projectionAskOpen = false
+        val stream = intent.getBooleanExtra("then_stream", false)
         if (result.resultCode == RESULT_OK && result.data != null) {
-            val projection = projectionManager.getMediaProjection(result.resultCode, result.data!!)
-            KioskService.mediaProjection = projection
+            // the service takes the permission after switching on its mediaProjection type
+            // (Android 14+ refuses getMediaProjection before that)
             startService(Intent(this, KioskService::class.java).apply {
-                action = "START_STREAMING"
+                action = if (stream) "START_STREAMING" else "PROJECTION_GRANTED"
+                putExtra("result_code", result.resultCode)
+                putExtra("result_data", result.data)
             })
-            if (intent.getStringExtra("action") == "request_projection") finish()
         }
+        if (intent.getStringExtra("action") == "request_projection") finish()
+    }
+
+    /**
+     * Gameplay screenshots need the screen-capture permission, which Android asks for in a
+     * dialog after every app restart. Ask on the idle lock screen (never during a game), at
+     * most once per PROJECTION_ASK_EVERY_MS, so the attendant presses "Start now" once.
+     */
+    private fun maybeAskProjection() {
+        if (ScreenGrab.ready || projectionAskOpen || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
+        val prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE)
+        if (System.currentTimeMillis() - prefs.getLong("projection_asked_at", 0) < PROJECTION_ASK_EVERY_MS) return
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (!isLockActivityVisible || ScreenGrab.ready || projectionAskOpen || isFinishing) return@postDelayed
+            if (KioskService.activeDeviceStatus != "LOCKED") return@postDelayed
+            prefs.edit().putLong("projection_asked_at", System.currentTimeMillis()).apply()
+            projectionAskOpen = true
+            try { stopLockTask() } catch (_: Exception) {}   // lock task would hide the system dialog
+            try {
+                projectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+            } catch (e: Exception) {
+                projectionAskOpen = false
+            }
+        }, 6_000)
     }
 
     private val client = OkHttpClient()
@@ -451,6 +478,7 @@ class LockActivity : ComponentActivity() {
 
         val action = intent.getStringExtra("action")
         if (action == "request_projection") {
+            projectionAskOpen = true
             projectionLauncher.launch(projectionManager.createScreenCaptureIntent())
             return
         }
@@ -1150,6 +1178,7 @@ class LockActivity : ComponentActivity() {
         checkIntentForInvoice(intent)
         val action = intent.getStringExtra("action")
         if (action == "request_projection") {
+            projectionAskOpen = true
             projectionLauncher.launch(projectionManager.createScreenCaptureIntent())
         }
     }
@@ -1179,11 +1208,12 @@ class LockActivity : ComponentActivity() {
             return
         }
         val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        if (dpm.isDeviceOwnerApp(packageName) && intent.getStringExtra("action") != "request_projection") {
+        if (dpm.isDeviceOwnerApp(packageName) && intent.getStringExtra("action") != "request_projection" && !projectionAskOpen) {
             try {
                 startLockTask()
             } catch (e: Exception) {}
         }
+        if (intent.getStringExtra("action") != "request_projection") maybeAskProjection()
     }
 
     override fun onPause() {
@@ -1194,7 +1224,7 @@ class LockActivity : ComponentActivity() {
         // The 300ms delay gives the system time to finish its transition before we override it.
         if ((KioskService.activeDeviceStatus == "LOCKED"
             || KioskService.localSessionEndedPendingServerConfirm) && !AppUpdater.installInProgress
-            && !BackupWifi.askOpen && !RemoteControl.isPaused(this)) {
+            && !BackupWifi.askOpen && !projectionAskOpen && !RemoteControl.isPaused(this)) {
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 // Double-check: only relaunch if we haven't been legitimately unlocked yet
                 if (KioskService.activeDeviceStatus == "LOCKED"
@@ -1322,6 +1352,9 @@ class LockActivity : ComponentActivity() {
 
     companion object {
         var isLockActivityVisible = false
+        /** The screen-capture consent dialog is up: do not relaunch over it or lock the task. */
+        @Volatile var projectionAskOpen = false
+        private const val PROJECTION_ASK_EVERY_MS = 30 * 60_000L
         /** KioskService: staff reset the screen - drop the bill and the add-time box. */
         const val ACTION_SESSION_RESET = "com.example.psbill.ACTION_SESSION_RESET"
         /** How long the lock screen must stay idle before an update installs. */

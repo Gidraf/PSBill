@@ -85,7 +85,7 @@
             android:launchMode="singleInstance"
             android:excludeFromRecents="true"
             android:stateNotNeeded="true"
-            android:theme="@style/Theme.PSBill"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:exported="false" />
 
         <!-- Standalone crash recovery — no dependencies on app state -->

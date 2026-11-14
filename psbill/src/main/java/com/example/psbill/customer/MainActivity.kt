@@ -28,6 +28,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -342,6 +343,8 @@ fun PSBillAppMainView() {
 
     // Live API Data State
     var nodes by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    // After a TV QR scan: removed screens this TV can take back (keeps their sessions and prices)
+    var relinkOffer by remember { mutableStateOf<Pair<JSONObject, List<JSONObject>>?>(null) }
     var games by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var reportData by remember { mutableStateOf<JSONObject?>(null) }
     var vouchers by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
@@ -617,12 +620,8 @@ fun PSBillAppMainView() {
     }
 
     // Pair station using 6-digit PIN Code via live API call
-    fun pairStationWithPin(pinCode: String) {
-        val cleanPin = pinCode.replace("-", "").replace(" ", "").trim()
-        if (cleanPin.length < 6) {
-            Toast.makeText(context, "Please enter a valid 6-digit station PIN (e.g. 842-195)", Toast.LENGTH_SHORT).show()
-            return
-        }
+    /** The older station PIN (pairs this phone with a screen that is already linked). */
+    fun pairWithStationPin(cleanPin: String) {
         val payload = JSONObject().apply {
             put("pin_code", cleanPin)
             put("device_id", "mobile_app_${System.currentTimeMillis()}")
@@ -666,14 +665,9 @@ fun PSBillAppMainView() {
         })
     }
 
-    fun activateByQrPayload(qrValue: String): Boolean {
-        val activationPayload = extractActivationPayloadFromQr(qrValue) ?: return false
-        if (token.isBlank()) {
-            Toast.makeText(context, "Please login first to link this TV.", Toast.LENGTH_SHORT).show()
-            return true
-        }
-
-        val request = requestBuilder("$INTERNAL_SERVER_URL/api/devices/activate-by-qr")
+    fun postActivation(activationPayload: JSONObject) {
+        val byCode = activationPayload.has("code")
+        val request = requestBuilder("$INTERNAL_SERVER_URL/api/devices/" + if (byCode) "activate-by-code" else "activate-by-qr")
             .post(activationPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
         client.newCall(request).enqueue(object : Callback {
@@ -688,6 +682,11 @@ fun PSBillAppMainView() {
                 (context as? ComponentActivity)?.runOnUiThread {
                     if (response.code == 401 || response.code == 403) {
                         logoutExpiredToken()
+                        return@runOnUiThread
+                    }
+                    if (byCode && response.code == 404) {
+                        // not a TV link code: maybe the station PIN of a screen already linked
+                        pairWithStationPin(activationPayload.optString("code"))
                         return@runOnUiThread
                     }
                     if (!response.isSuccessful) {
@@ -705,7 +704,74 @@ fun PSBillAppMainView() {
                 }
             }
         })
+    }
+
+    /** If screens were removed before, ask whether this TV is one of them, then link. */
+    fun linkOrOfferRelink(activationPayload: JSONObject) {
+        client.newCall(requestBuilder("$INTERNAL_SERVER_URL/api/devices/removed").build()).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                (context as? ComponentActivity)?.runOnUiThread { postActivation(activationPayload) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val body = response.body?.string().orEmpty()
+                val removed = runCatching {
+                    val arr = JSONArray(body)
+                    (0 until arr.length()).map { arr.getJSONObject(it) }
+                }.getOrDefault(emptyList())
+                (context as? ComponentActivity)?.runOnUiThread {
+                    if (removed.isEmpty()) postActivation(activationPayload)
+                    else relinkOffer = activationPayload to removed
+                }
+            }
+        })
+    }
+
+    /** Scan of a TV's QR. */
+    fun activateByQrPayload(qrValue: String): Boolean {
+        val activationPayload = extractActivationPayloadFromQr(qrValue) ?: return false
+        if (token.isBlank()) {
+            Toast.makeText(context, "Please login first to link this TV.", Toast.LENGTH_SHORT).show()
+            return true
+        }
+        linkOrOfferRelink(activationPayload)
         return true
+    }
+
+    /** "Link code": the 6 digits the TV shows (or an older station PIN). */
+    fun pairStationWithPin(pinCode: String) {
+        val cleanPin = pinCode.filter { it.isDigit() }
+        if (cleanPin.length != 6) {
+            Toast.makeText(context, "Type the 6-digit link code shown on the TV (e.g. 842 195)", Toast.LENGTH_SHORT).show()
+            return
+        }
+        linkOrOfferRelink(JSONObject().put("code", cleanPin))
+    }
+
+    relinkOffer?.let { (payload, removed) ->
+        AlertDialog(
+            onDismissRequest = { relinkOffer = null },
+            title = { Text("Is this a screen you removed before?") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Pick it to link this TV back to it: its name, prices, sessions and money stay. " +
+                        "Or link it as a new screen.")
+                    removed.forEach { d ->
+                        val n = d.optInt("sessions")
+                        OutlinedButton(onClick = {
+                            relinkOffer = null
+                            postActivation(JSONObject(payload.toString()).put("device_id", d.optString("id")))
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("${d.optString("device_name", "Screen")}  ($n session${if (n == 1) "" else "s"})")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { relinkOffer = null; postActivation(payload) }) { Text("New screen") }
+            },
+            dismissButton = { TextButton(onClick = { relinkOffer = null }) { Text("Cancel") } },
+        )
     }
 
     // Renew the login while online once less than a day is left (no-op offline).
@@ -725,6 +791,18 @@ fun PSBillAppMainView() {
             }
             delay(30 * 60_000L)
         }
+    }
+
+    // Staff alerts with sound (StaffAlertService) while signed in, also with the app closed
+    val notifyPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { }
+    LaunchedEffect(token.isNotBlank()) {
+        if (token.isBlank()) { StaffAlertService.stop(context); return@LaunchedEffect }
+        if (!StaffAlertService.canNotify(context) && android.os.Build.VERSION.SDK_INT >= 33) {
+            runCatching { notifyPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+        }
+        StaffAlertService.start(context)
     }
 
     LaunchedEffect(token, reportRange) {

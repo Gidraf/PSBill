@@ -136,7 +136,7 @@ fun PSBillScreensConfigView(
         // Every waiting / called person for this screen, all games (the old call showed one game only).
         api.get("/api/v1/kiosk/queue/tickets?device_id=${Uri.encode(nodeId)}") { code, body ->
             if (code in 200..299) {
-                queueTickets = parseObjects(body).filter { it.optString("status").uppercase(Locale.US) in setOf("WAITING", "CALLED") }
+                queueTickets = parseObjects(body).filter { it.optString("status").uppercase(Locale.US) in setOf("PENDING_APPROVAL", "WAITING", "CALLED") }
             } else {
                 detailError = if (code == 0) "Could not load the queue. Check the internet, then tap refresh."
                               else "Could not load the queue (error $code)."
@@ -307,6 +307,14 @@ fun PSBillScreensConfigView(
                     else api.toast(api.errorText(code, body, "Could not update the queue"))
                 }
             },
+            onQueueDecision = { ticket, decision, message ->
+                actionNodeId = openNode.optString("id")
+                api.post("/api/v1/kiosk/queue/tickets/${ticket.optString("id")}/$decision", JSONObject()) { code, body ->
+                    actionNodeId = null
+                    if (code in 200..299) { api.toast(message); loadScreenDetails(openNode) }
+                    else api.toast(api.errorText(code, body, "Could not answer the request"))
+                }
+            },
             onCallNext = {
                 val next = queueTickets.firstOrNull { it.optString("status").uppercase(Locale.US) == "WAITING" }
                 if (next == null) api.toast("No one is waiting")
@@ -362,6 +370,7 @@ fun PSBillScreensConfigView(
                 )
             },
             activityTab = { ScreenActivitySection(api, openNode, onRefresh) },
+            shotsTab = { ScreenShotsSection(api, openNode) },
         )
         return
     }
@@ -490,6 +499,7 @@ private fun ScreenDetail(
     onPage: (Int) -> Unit,
     activeMatch: JSONObject?,
     onQueueStatus: (JSONObject, String, String) -> Unit,
+    onQueueDecision: (JSONObject, String, String) -> Unit,
     onCallNext: () -> Unit,
     onStartFromTicket: (JSONObject) -> Unit,
     onLoserStart: (String, String, String) -> Unit,
@@ -497,12 +507,13 @@ private fun ScreenDetail(
     onEndMatch: () -> Unit,
     queueForm: @Composable () -> Unit,
     activityTab: @Composable () -> Unit = {},
+    shotsTab: @Composable () -> Unit = {},
 ) {
     val name = nodeName(node)
     var ticketForActions by remember { mutableStateOf<JSONObject?>(null) }
     val (label, tone) = screenStatus(node)
     var tab by remember { mutableStateOf(0) }
-    val tabs = listOf("Control", "Queue (${queueTickets.size})", "History", "Activity")
+    val tabs = listOf("Control", "Queue (${queueTickets.size})", "History", "Activity", "Shots")
 
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -533,6 +544,7 @@ private fun ScreenDetail(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             when (tab) {
                 3 -> item { activityTab() }
+                4 -> item { shotsTab() }
                 0 -> item {
                     if (activeMatch != null) {
                         LoserPayMatchCard(activeMatch, null, busy, onRound, onEndMatch)
@@ -564,8 +576,8 @@ private fun ScreenDetail(
                                     if (st == "WAITING" && wait > 0) "about $wait min" else "",
                                     t.optString("wifi_voucher_code").takeIf { it.isNotBlank() && it != "null" }?.let { "WiFi $it" }.orEmpty(),
                                 ).filter { it.isNotBlank() }.joinToString("  -  "),
-                                tone = if (st == "CALLED") PsTone.Good else PsTone.Busy,
-                                pill = st,
+                                tone = when (st) { "CALLED" -> PsTone.Good; "PENDING_APPROVAL" -> PsTone.Warn; else -> PsTone.Busy },
+                                pill = if (st == "PENDING_APPROVAL") "APPROVE?" else st,
                                 onClick = { ticketForActions = t },
                             )
                         }
@@ -630,6 +642,20 @@ private fun ScreenDetail(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(t.optString("game_name").takeIf { it.isNotBlank() && it != "null" } ?: "", color = PSBillThemeColors.TextSecondary)
+                    if (t.optString("status").uppercase(Locale.US) == "PENDING_APPROVAL") {
+                        Text("Asked on the WiFi page. Approve only if they are really here.",
+                            color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                        Button(
+                            onClick = { ticketForActions = null; onQueueDecision(t, "approve", "#$num added to the queue") },
+                            enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = PsTone.Good)
+                        ) { Text("Approve - add to the queue") }
+                        OutlinedButton(
+                            onClick = { ticketForActions = null; onQueueDecision(t, "reject", "#$num rejected") },
+                            enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PsTone.Bad)
+                        ) { Text("Reject") }
+                    } else {
                     Button(
                         onClick = { ticketForActions = null; onStartFromTicket(t) },
                         enabled = free && !busy, modifier = Modifier.fillMaxWidth(),
@@ -648,6 +674,7 @@ private fun ScreenDetail(
                         onClick = { ticketForActions = null; onQueueStatus(t, "CANCELLED", "#$num removed") }, modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = PsTone.Bad)
                     ) { Text("Remove from queue") }
+                    }
                 }
             },
             confirmButton = {},

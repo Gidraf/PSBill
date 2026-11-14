@@ -1,18 +1,14 @@
 package com.example.psbill
 
-import android.hardware.display.DisplayManager
-import android.hardware.display.VirtualDisplay
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
-import android.media.projection.MediaProjection
 import android.util.Log
 import okhttp3.WebSocket
 import okio.ByteString.Companion.toByteString
 import java.nio.ByteBuffer
 
 class StreamEncoder(
-    private val mediaProjection: MediaProjection,
     private val webSocket: WebSocket,
     private val width: Int = 960,
     private val height: Int = 540,
@@ -20,7 +16,6 @@ class StreamEncoder(
 ) {
     private val TAG = "StreamEncoder"
     private var mediaCodec: MediaCodec? = null
-    private var virtualDisplay: VirtualDisplay? = null
     private var isRunning = false
     private var encoderThread: Thread? = null
 
@@ -30,13 +25,10 @@ class StreamEncoder(
         
         try {
             setupEncoder()
-            virtualDisplay = mediaProjection.createVirtualDisplay(
-                "KioskScreenCapture",
-                width, height, dpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                mediaCodec!!.createInputSurface(),
-                null, null
-            )
+            // the one capture display (ScreenGrab) is pointed at the encoder while streaming
+            if (!ScreenGrab.attachStream(mediaCodec!!.createInputSurface(), width, height, dpi)) {
+                throw IllegalStateException("no screen capture permission")
+            }
             
             mediaCodec!!.start()
             startEncoderLoop()
@@ -101,6 +93,7 @@ class StreamEncoder(
             Log.e(TAG, "Encoder thread join interrupted")
         }
         
+        ScreenGrab.detachStream()
         try {
             mediaCodec?.stop()
             mediaCodec?.release()
@@ -109,8 +102,5 @@ class StreamEncoder(
         } finally {
             mediaCodec = null
         }
-        
-        virtualDisplay?.release()
-        virtualDisplay = null
     }
 }

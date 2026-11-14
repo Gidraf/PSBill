@@ -63,6 +63,12 @@ class ConsoleOffActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         current = WeakReference(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // A small card in the corner, not the whole screen (owner, 2026-11-14): the TV menu and
+        // settings stay usable around it.
+        window.setLayout(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT)
+        window.setGravity(android.view.Gravity.BOTTOM or android.view.Gravity.END)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         setContent { ConsoleOffScreen(onOk = ::backToGame) }
     }
 
@@ -74,6 +80,17 @@ class ConsoleOffActivity : ComponentActivity() {
     override fun onPause() {
         isResumedNow = false
         super.onPause()
+    }
+
+    /** Left by Home / the TV menu / settings: do not come back over them until the console's
+     *  state really changes (KioskService clears KEY_TRUST_ON then). */
+    override fun onStop() {
+        if (!isFinishing) dismissForNow()
+        super.onStop()
+    }
+
+    private fun dismissForNow() {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_TRUST_ON, true).apply()
     }
 
     override fun onDestroy() {
@@ -89,8 +106,11 @@ class ConsoleOffActivity : ComponentActivity() {
                 if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) backToGame()
                 return true
             }
-            // Back would drop to the TV's HDMI screen and start its countdown again.
-            KeyEvent.KEYCODE_BACK -> return true
+            // Back hides the card until the console's state changes
+            KeyEvent.KEYCODE_BACK -> {
+                if (event.action == KeyEvent.ACTION_UP) { dismissForNow(); finish() }
+                return true
+            }
         }
         return super.dispatchKeyEvent(event)
     }
@@ -117,29 +137,25 @@ private fun ConsoleOffScreen(onOk: () -> Unit) {
     val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
     androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Box(
-        Modifier.fillMaxSize().background(Color(0xFF0B0F19)),
-        contentAlignment = Alignment.Center
+        Modifier.padding(16.dp).widthIn(max = 300.dp)
+            .background(Color(0xEE0B0F19), RoundedCornerShape(14.dp))
+            .padding(14.dp),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(48.dp)) {
-            Text("Turn on the console", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(16.dp))
+        Column(horizontalAlignment = Alignment.Start) {
+            Text("Console off?", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
             Text(
-                "The PlayStation is off or asleep. Press its power button or the PS button on the controller.",
-                color = Color(0xFFCBD5E1), fontSize = 22.sp, textAlign = TextAlign.Center
+                "Press the PS button. Your session is still running.",
+                color = Color(0xFFCBD5E1), fontSize = 12.sp, textAlign = TextAlign.Start
             )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Your session is still running. The game comes back here by itself.",
-                color = Color(0xFF94A3B8), fontSize = 18.sp, textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(10.dp))
             Box(
                 Modifier.focusRequester(focus)
                     .clickable(onClick = onOk)
-                    .background(Color(0xFF4F46E5), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 28.dp, vertical = 14.dp)
+                    .background(Color(0xFF4F46E5), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                Text("Console is on? Press OK", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Text("OK = back to game   BACK = hide", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
