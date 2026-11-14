@@ -211,6 +211,7 @@ class KioskService : Service() {
     // back the HDMI input is opened again, whatever is in front (the TV often leaves the
     // input by itself when the cable is pulled, so there may be no cover to close).
     private var consoleLostInSession = false
+    private var hdmiHadChild: Boolean? = null   // the console's CEC input exists on the port
     private var hdmiCallback: android.media.tv.TvInputManager.TvInputCallback? = null
     private val hdmiWatchHandler = Handler(Looper.getMainLooper())
     private val hdmiWatchRunnable = object : Runnable {
@@ -1983,6 +1984,26 @@ class KioskService : Service() {
             }
         }
         val state = try { tim.getInputState(id) } catch (e: Exception) { return }
+        // Many TVs keep the PORT "connected" whatever the cable does; only the console's CEC
+        // input (a child of the port) comes and goes. Follow that too, or a returned cable
+        // is never noticed and the TV stays on its home / no-signal screen.
+        val hasChild = try { tim.tvInputList.any { it.parentId == id } } catch (_: Exception) { false }
+        val hadChild = hdmiHadChild
+        hdmiHadChild = hasChild
+        if (hadChild != null && hadChild != hasChild) {
+            Log.d(TAG, "Console CEC input ${if (hasChild) "back" else "gone"} on $id")
+            if (!hasChild) {
+                if (sessionOnScreen()) consoleLostInSession = true
+            } else if (consoleLostInSession && state == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED &&
+                hdmiState == state && sessionOnScreen() && !isSleeping && !RemoteControl.isPaused(this)) {
+                // the port never changed state, so onConsoleState would not see the return
+                consoleLostInSession = false
+                if (ConsoleOffActivity.isOpen()) ConsoleOffActivity.close()
+                Log.d(TAG, "Console back (CEC): opening HDMI input #$hdmiNumber")
+                launchHdmiInput(hdmiNumber)
+                return
+            }
+        }
         onConsoleState(state)
     }
 
