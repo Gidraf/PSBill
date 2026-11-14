@@ -1308,7 +1308,8 @@ class KioskService : Service() {
 
                         Log.d(TAG, "[LoserPay] Round $roundNo done. ${if(isDraw) "DRAW" else "$winner wins"}. Amount KES $amount")
 
-                        // Brief sports-ticker popup showing result
+                        // The result on the winner's side (draw in the middle) + the meter with the totals
+                        peekMeter(RESULT_POPUP_MS + 2_000L)
                         showRoundResultPopup(data, roundNo)
                     }
                 }
@@ -1435,8 +1436,9 @@ class KioskService : Service() {
         val totalA = loserPayAmountA.value
         val totalB = loserPayAmountB.value
 
+        val density = resources.displayMetrics.density
         val popupParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -1447,9 +1449,18 @@ class KioskService : Service() {
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = 40
+            // Player 1 is LEFT, player 2 RIGHT (above the meter), a draw in the middle
+            gravity = Gravity.BOTTOM or when {
+                isDraw || winnerSide.isBlank() -> Gravity.CENTER_HORIZONTAL
+                winnerSide == "A" -> Gravity.START
+                else -> Gravity.END
+            }
+            x = (24 * density).toInt()
+            y = ((if (!isDraw && winnerSide == "B") 120 else 28) * density).toInt()
         }
+        val winName = if (winnerSide == "A") a else b
+        val loseName = if (winnerSide == "A") b else a
+        val losePays = if (winnerSide == "A") payB else payA
 
         val popupView = ComposeView(this).apply {
             setContent {
@@ -1460,18 +1471,31 @@ class KioskService : Service() {
                     shown = false
                 }
                 AnimatedVisibility(visible = shown, enter = fadeIn(tween(500)), exit = fadeOut(tween(1200))) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 48.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        ResultSide(a, "PLAYER 1", isDraw, winnerSide == "A", statsA, payA, totalA, Modifier.weight(1f))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("GAME $round", color = Color(0xFFFBBF24), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text(if (isDraw) "DRAW" else "VS", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
-                            if (isDraw) Text("split", color = Color(0xFFFDE68A), fontSize = 11.sp)
-                        }
-                        ResultSide(b, "PLAYER 2", isDraw, winnerSide == "B", statsB, payB, totalB, Modifier.weight(1f))
+                    if (isDraw || winnerSide.isBlank()) {
+                        ResultCard(
+                            title = "GAME $round  -  DRAW",
+                            headline = "Draw - you share the cost",
+                            lines = listOf(
+                                "$a pays KES ${payA.toInt()}  |  $b pays KES ${payB.toInt()}",
+                                "Score  $a ${statsA[0]}-${statsA[1]}-${statsA[2]}   $b ${statsB[0]}-${statsB[1]}-${statsB[2]}  (W-D-L)",
+                                "Total so far  $a KES ${totalA.toInt()}  |  $b KES ${totalB.toInt()}",
+                            ),
+                            colors = listOf(Color(0xFF78350F), Color(0xFFB45309)),
+                            accent = Color(0xFFFDE68A),
+                        )
+                    } else {
+                        val (ws, ls) = if (winnerSide == "A") statsA to statsB else statsB to statsA
+                        ResultCard(
+                            title = "GAME $round  -  ${if (winnerSide == "A") "PLAYER 1" else "PLAYER 2"} WINS",
+                            headline = "$winName wins!",
+                            lines = listOf(
+                                "$loseName pays KES ${losePays.toInt()} for this game",
+                                "Score  $winName ${ws[0]}-${ws[1]}-${ws[2]}   $loseName ${ls[0]}-${ls[1]}-${ls[2]}  (W-D-L)",
+                                "Total so far  $a KES ${totalA.toInt()}  |  $b KES ${totalB.toInt()}",
+                            ),
+                            colors = listOf(Color(0xFF14532D), Color(0xFF16A34A)),
+                            accent = Color(0xFFFDE68A),
+                        )
                     }
                 }
             }
@@ -1533,6 +1557,25 @@ class KioskService : Service() {
                 color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
             )
             Text("Total so far: KES ${total.toInt()}", color = Color.White.copy(0.8f), fontSize = 11.sp)
+        }
+    }
+
+    @Composable
+    private fun ResultCard(title: String, headline: String, lines: List<String>, colors: List<Color>, accent: Color) {
+        Column(
+            Modifier
+                .widthIn(max = 560.dp)
+                .background(Brush.horizontalGradient(colors), RoundedCornerShape(16.dp))
+                .border(2.dp, accent.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(title, color = Color.White.copy(0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text(headline, color = accent, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            lines.forEachIndexed { i, l ->
+                Text(l, color = Color.White, fontSize = if (i == 0) 15.sp else 12.sp,
+                    fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+            }
         }
     }
 
@@ -2389,9 +2432,12 @@ class KioskService : Service() {
             )
         }
         if (mode == "PREPAID" && level == 0) prepaidWarningShown = false  // topped up
-        meterVisible.value = level > 0 || secsElapsed < 20 || (secsElapsed % 300) < 10 ||
-            android.os.SystemClock.elapsedRealtime() < meterPeekUntil ||
-            isLoserPaySession   // loser pay: the meter stays on so both players see the game's cost
+        val peeking = android.os.SystemClock.elapsedRealtime() < meterPeekUntil
+        meterVisible.value = if (isLoserPaySession)
+            // Loser pay: out of the way; it shows when something changes (the start, a game result,
+            // the turn or the bill turning amber/red) and goes again.
+            level > 0 || secsElapsed < 20 || peeking
+        else level > 0 || secsElapsed < 20 || (secsElapsed % 300) < 10 || peeking
     }
 
     /** Queue info from the 2-second sync: pop up a short notice when someone joins. */
