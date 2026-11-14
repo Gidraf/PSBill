@@ -374,6 +374,7 @@ fun PSBillAppMainView() {
     var profile by remember { mutableStateOf<PsProfile?>(null) }
     var loginError by remember { mutableStateOf<String?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var showSignup by remember { mutableStateOf(false) }
 
     fun loginWithCredentials(onFailure: () -> Unit = {}, onSuccess: () -> Unit = {}) {
         val email = emailInput.trim().lowercase(Locale.US)
@@ -869,6 +870,30 @@ fun PSBillAppMainView() {
         }
     }
 
+    if (token.isBlank() && showSignup) {
+        PSBillSignupScreen(
+            serverHost = INTERNAL_SERVER_URL,
+            initialEmail = emailInput,
+            onBack = { showSignup = false },
+            onSignedUp = { newToken, email, password ->
+                // the signup reply is a sign-in: straight into the app as the lounge's admin
+                emailInput = email
+                passwordInput = password
+                SavedLogin.save(context, password)
+                prefs.edit().putString("login_email", email).putString("auth_token", newToken).apply()
+                loginError = null
+                authExpiryHandled = false
+                renewTried = false
+                autoReloginTried = false
+                showSignup = false
+                token = newToken
+                selectedTab = "SESSIONS"
+                Toast.makeText(context, "Welcome! Link your first TV: open PSBill on the TV and scan its code.", Toast.LENGTH_LONG).show()
+            },
+        )
+        return
+    }
+
     if (token.isBlank()) {
         PSBillLoginScreen(
             email = emailInput,
@@ -877,7 +902,8 @@ fun PSBillAppMainView() {
             onPasswordChange = { passwordInput = it },
             isLoading = isLoggingIn,
             error = loginError,
-            onLogin = { loginWithCredentials { fetchApiData() } }
+            onLogin = { loginWithCredentials { fetchApiData() } },
+            onSignUp = { loginError = null; showSignup = true }
         )
         return
     }
@@ -1076,7 +1102,8 @@ private fun PSBillLoginScreen(
     onPasswordChange: (String) -> Unit,
     isLoading: Boolean,
     error: String?,
-    onLogin: () -> Unit
+    onLogin: () -> Unit,
+    onSignUp: () -> Unit = {}
 ) {
     var showPassword by remember { mutableStateOf(false) }
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
@@ -1200,6 +1227,16 @@ private fun PSBillLoginScreen(
                 }
                 Text("Forgot it? Reset the password on ajiriwa.gidraf.dev, then sign in here.",
                     color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                HorizontalDivider(color = PSBillThemeColors.Border)
+                OutlinedButton(
+                    onClick = onSignUp,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.AddBusiness, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("New lounge? Create an account")
+                }
             }
         }
     }
