@@ -171,7 +171,7 @@ fun PSBillScreensConfigView(
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "{}"
                 (context as? ComponentActivity)?.runOnUiThread {
-                    if (response.code == 401 || response.code == 403) {
+                    if (com.example.psbill.customer.authLost(response.code, body)) {
                         onTokenExpired()
                         completeOne()
                         return@runOnUiThread
@@ -218,7 +218,7 @@ fun PSBillScreensConfigView(
                 val body = response.body?.string().orEmpty()
                 (context as? ComponentActivity)?.runOnUiThread {
                     actionNodeId = null
-                    if (response.code == 401 || response.code == 403) {
+                    if (com.example.psbill.customer.authLost(response.code, body)) {
                         onTokenExpired()
                         return@runOnUiThread
                     }
@@ -428,10 +428,13 @@ fun PSBillScreensConfigView(
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             PsPageHeader("Screens", "Tap a screen to start, end or manage it") {
-                TextButton(onClick = { loadPricing(); showPricing = true }) {
-                    Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Prices")
+                // Prices, queue rules and backup WiFi are the lounge admin's (agents get 403 OWNER_ONLY)
+                if (LocalPsProfile.current?.isAdmin != false) {
+                    TextButton(onClick = { loadPricing(); showPricing = true }) {
+                        Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Prices")
+                    }
+                    TextButton(onClick = { loadBackupWifi(); showBackupWifi = true }) { Text("Backup WiFi") }
                 }
-                TextButton(onClick = { loadBackupWifi(); showBackupWifi = true }) { Text("Backup WiFi") }
                 if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 else IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, contentDescription = "Refresh") }
             }
@@ -525,7 +528,12 @@ private fun ScreenDetail(
     var ticketForActions by remember { mutableStateOf<JSONObject?>(null) }
     val (label, tone) = screenStatus(node)
     var tab by remember { mutableStateOf(0) }
-    val tabs = listOf("Control", "Queue (${queueTickets.size})", "History", "Activity") + (if (showShots) listOf("Shots") else emptyList())
+    // Activity (the log + pause/remove) is for the lounge admin only
+    val admin = LocalPsProfile.current?.isAdmin != false
+    val tabKeys = listOf("control", "queue", "history") + (if (admin) listOf("activity") else emptyList()) +
+        (if (showShots) listOf("shots") else emptyList())
+    val tabs = tabKeys.map { when (it) { "control" -> "Control"; "queue" -> "Queue (${queueTickets.size})"; "history" -> "History"
+        "activity" -> "Activity"; else -> "Shots" } }
     if (tab >= tabs.size) tab = 0
 
     Column(Modifier.fillMaxSize()) {
@@ -555,17 +563,17 @@ private fun ScreenDetail(
             Text(it, color = PSBillThemeColors.Amber, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-            when (tab) {
-                3 -> item { activityTab() }
-                4 -> item { shotsTab() }
-                0 -> item {
+            when (tabKeys[tab]) {
+                "activity" -> item { activityTab() }
+                "shots" -> item { shotsTab() }
+                "control" -> item {
                     if (activeMatch != null) {
                         LoserPayMatchCard(activeMatch, null, busy, onRound, onEndMatch)
                     } else {
                         ScreenControl(node, label, games, busy, selectedGame, onGameChange, selectedBilling, onBillingChange, onAction, onLoserStart, overcharge)
                     }
                 }
-                1 -> {
+                "queue" -> {
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.weight(1f)) { PsSectionLabel("Waiting", queueTickets.size) }

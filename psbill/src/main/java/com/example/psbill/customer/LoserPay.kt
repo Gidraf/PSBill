@@ -41,6 +41,37 @@ class PsApi(
     fun put(path: String, body: JSONObject, done: (Int, String) -> Unit) =
         run(req(path).put(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build(), done)
 
+    fun delete(path: String, done: (Int, String) -> Unit) = run(req(path).delete().build(), done)
+
+    /** multipart/form-data: text fields + one file (field name, file name, mime, bytes). */
+    fun multipart(path: String, method: String, fields: Map<String, String>, file: FilePart?,
+                  done: (Int, String) -> Unit) {
+        val b = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
+        fields.forEach { (k, v) -> b.addFormDataPart(k, v) }
+        file?.let { b.addFormDataPart(it.field, it.name, it.bytes.toRequestBody(it.mime.toMediaType())) }
+        run(req(path).method(method, b.build()).build(), done)
+    }
+
+    /** Saves the response to the app cache (exports, invoices). done(code, file or null, error body). */
+    fun download(path: String, fileName: String, done: (Int, java.io.File?, String) -> Unit) {
+        client.newCall(req(path).get().build()).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = ui { done(0, null, "") }
+            override fun onResponse(call: Call, response: Response) {
+                val code = response.code
+                if (!response.isSuccessful) {
+                    val body = response.body?.string().orEmpty()
+                    ui { if (authLost(code, body)) onAuthLost() else done(code, null, body) }
+                    return
+                }
+                val out = runCatching {
+                    val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+                    java.io.File(dir, fileName).also { f -> response.body?.byteStream()?.use { i -> f.outputStream().use { i.copyTo(it) } } }
+                }.getOrNull()
+                ui { done(code, out, "") }
+            }
+        })
+    }
+
     private fun req(path: String): Request.Builder {
         val b = Request.Builder().url("$serverHost$path")
         if (token.isNotBlank()) b.header("Authorization", "Bearer $token")
@@ -59,7 +90,7 @@ class PsApi(
                 val code = response.code
                 ui {
                     // 403 OWNER_ONLY = an attendant tried an owner action: show it, do not sign out
-                    if (code == 401 || (code == 403 && !body.contains("OWNER_ONLY"))) onAuthLost() else done(code, body)
+                    if (authLost(code, body)) onAuthLost() else done(code, body)
                 }
             }
         })
@@ -74,6 +105,13 @@ class PsApi(
 
     fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_LONG).show()
 }
+
+class FilePart(val field: String, val name: String, val mime: String, val bytes: ByteArray)
+
+/** Only a real sign-in problem signs out: 401, or a 403 that is not "owner only" / "not allowed here". */
+fun authLost(code: Int, body: String): Boolean =
+    code == 401 || (code == 403 && !body.contains("OWNER_ONLY") && !body.contains("FORBIDDEN")
+        && !body.contains("access denied") && !body.contains("MODULE_REQUIRED"))
 
 fun parseObjects(body: String): List<JSONObject> = runCatching {
     val arr = if (body.trim().startsWith("[")) JSONArray(body) else JSONObject(body).optJSONArray("tickets") ?: JSONArray()

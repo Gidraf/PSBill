@@ -370,12 +370,16 @@ fun PSBillAppMainView() {
     }
 
     val client = remember { OkHttpClient() }
+    // Who is signed in: PSBill Admin (owner powers) or PSBill Agent (runs the screens)
+    var profile by remember { mutableStateOf<PsProfile?>(null) }
+    var loginError by remember { mutableStateOf<String?>(null) }
+    var confirmSignOut by remember { mutableStateOf(false) }
 
     fun loginWithCredentials(onFailure: () -> Unit = {}, onSuccess: () -> Unit = {}) {
         val email = emailInput.trim().lowercase(Locale.US)
         val password = passwordInput
         if (email.isBlank() || password.isBlank()) {
-            Toast.makeText(context, "Enter email and password.", Toast.LENGTH_SHORT).show()
+            loginError = "Enter your email and password."
             return
         }
         if (isLoggingIn) return
@@ -394,7 +398,8 @@ fun PSBillAppMainView() {
             override fun onFailure(call: Call, e: IOException) {
                 (context as? ComponentActivity)?.runOnUiThread {
                     isLoggingIn = false
-                    Toast.makeText(context, "Could not reach the server. Check the internet and try again.", Toast.LENGTH_LONG).show()
+                    loginError = "Could not reach the server. Check the internet and try again."
+                    if (token.isNotBlank()) Toast.makeText(context, loginError, Toast.LENGTH_LONG).show()
                     onFailure()
                 }
             }
@@ -408,7 +413,8 @@ fun PSBillAppMainView() {
                             val obj = JSONObject(body)
                             obj.optString("error").ifBlank { obj.optString("message") }
                         }.getOrElse { "" }
-                        Toast.makeText(context, if (err.isNotBlank()) err else "Login failed (${response.code})", Toast.LENGTH_LONG).show()
+                        loginError = if (err.isNotBlank()) err else "Sign in failed (error ${response.code}). Try again."
+                        if (token.isNotBlank()) Toast.makeText(context, loginError, Toast.LENGTH_LONG).show()
                         if (response.code == 400 || response.code == 401 || response.code == 403) {
                             // the saved password no longer works: forget it
                             SavedLogin.clear(context)
@@ -431,6 +437,7 @@ fun PSBillAppMainView() {
                     }
 
                     token = tokenFromLogin
+                    loginError = null
                     authExpiryHandled = false
                     renewTried = false
                     autoReloginTried = false
@@ -482,6 +489,7 @@ fun PSBillAppMainView() {
             return
         }
         token = ""
+        profile = null
         passwordInput = SavedLogin.password(context) ?: ""
         nodes = emptyList()
         games = emptyList()
@@ -494,6 +502,32 @@ fun PSBillAppMainView() {
         showApiConfig = false
         prefs.edit().remove("auth_token").apply()
         Toast.makeText(context, "Session expired. Please sign in again.", Toast.LENGTH_LONG).show()
+    }
+
+    /** Sign out on purpose: forget the token AND the saved password (another person may sign in). */
+    fun signOut() {
+        StaffAlertService.stop(context)
+        SavedLogin.clear(context)
+        token = ""
+        profile = null
+        passwordInput = ""
+        nodes = emptyList()
+        games = emptyList()
+        vouchers = emptyList()
+        wifiVoucherBatches = emptyList()
+        reportData = null
+        pairedNode = null
+        selectedTab = "SESSIONS"
+        prefs.edit().remove("auth_token").apply()
+    }
+
+    val api = remember(token) { PsApi(context, client, INTERNAL_SERVER_URL, token) { logoutExpiredToken() } }
+
+    fun loadProfile() {
+        if (token.isBlank()) return
+        api.get("/api/v1/profile") { code, body ->
+            if (code in 200..299) runCatching { profile = PsProfile(JSONObject(body)) }
+        }
     }
 
     fun requestBuilder(url: String): Request.Builder {
@@ -521,7 +555,7 @@ fun PSBillAppMainView() {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "[]"
                 try {
-                    if (response.code == 401 || response.code == 403) {
+                    if (authLost(response.code, body)) {
                         (context as? ComponentActivity)?.runOnUiThread { logoutExpiredToken() }
                         return
                     }
@@ -551,7 +585,7 @@ fun PSBillAppMainView() {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "[]"
                 try {
-                    if (response.code == 401 || response.code == 403) {
+                    if (authLost(response.code, body)) {
                         (context as? ComponentActivity)?.runOnUiThread { logoutExpiredToken() }
                         return
                     }
@@ -572,7 +606,7 @@ fun PSBillAppMainView() {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "{}"
                 try {
-                    if (response.code == 401 || response.code == 403) {
+                    if (authLost(response.code, body)) {
                         (context as? ComponentActivity)?.runOnUiThread { logoutExpiredToken() }
                         return
                     }
@@ -590,7 +624,7 @@ fun PSBillAppMainView() {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "{}"
                 try {
-                    if (response.code == 401 || response.code == 403) {
+                    if (authLost(response.code, body)) {
                         (context as? ComponentActivity)?.runOnUiThread { logoutExpiredToken() }
                         return
                     }
@@ -616,7 +650,7 @@ fun PSBillAppMainView() {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "{}"
                 try {
-                    if (response.code == 401 || response.code == 403) {
+                    if (authLost(response.code, body)) {
                         (context as? ComponentActivity)?.runOnUiThread { logoutExpiredToken() }
                         return
                     }
@@ -651,7 +685,7 @@ fun PSBillAppMainView() {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string().orEmpty()
                 (context as? ComponentActivity)?.runOnUiThread {
-                    if (response.code == 401 || response.code == 403) {
+                    if (authLost(response.code, body)) {
                         logoutExpiredToken()
                         return@runOnUiThread
                     }
@@ -692,7 +726,7 @@ fun PSBillAppMainView() {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string().orEmpty()
                 (context as? ComponentActivity)?.runOnUiThread {
-                    if (response.code == 401 || response.code == 403) {
+                    if (authLost(response.code, body)) {
                         logoutExpiredToken()
                         return@runOnUiThread
                     }
@@ -817,6 +851,8 @@ fun PSBillAppMainView() {
         StaffAlertService.start(context)
     }
 
+    LaunchedEffect(token) { if (token.isNotBlank()) loadProfile() }
+
     LaunchedEffect(token, reportRange) {
         if (token.isBlank()) return@LaunchedEffect
         fetchApiData(reportRange)
@@ -840,10 +876,17 @@ fun PSBillAppMainView() {
             password = passwordInput,
             onPasswordChange = { passwordInput = it },
             isLoading = isLoggingIn,
+            error = loginError,
             onLogin = { loginWithCredentials { fetchApiData() } }
         )
         return
     }
+
+    val wide = isWide()
+    val navItems: List<Triple<String, String, androidx.compose.ui.graphics.vector.ImageVector>> =
+        listOf(Triple("SESSIONS", "Sessions", Icons.Filled.Timer)) +
+            CompiledModules.features.sortedBy { it.order }.map { Triple(it.key, it.label, it.icon) } +
+            listOf(Triple("MORE", if (profile?.isAdmin == false) "Account" else "Manage", Icons.Filled.Tune))
 
     Scaffold(
         containerColor = PSBillThemeColors.Canvas,
@@ -858,14 +901,18 @@ fun PSBillAppMainView() {
                             Icon(Icons.Filled.Tv, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                         Column {
-                            Text("PSBill", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                            Text("Gaming lounge", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp)
+                            Text(profile?.businessName?.ifBlank { null } ?: "PSBill", color = PSBillThemeColors.TextPrimary,
+                                fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text(profile?.let { "${it.name} - ${it.roleLabel}" } ?: "Gaming lounge",
+                                color = PSBillThemeColors.TextSecondary, fontSize = 11.sp, maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = PSBillThemeColors.Surface),
                 actions = {
-                    IconButton(onClick = { showApiConfig = true }) {
+                    IconButton(onClick = { selectedTab = "MORE" }) {
                         Icon(Icons.Filled.AccountCircle, contentDescription = "Account", tint = PSBillThemeColors.TextSecondary)
                     }
                     IconButton(onClick = { fetchApiData() }) {
@@ -875,36 +922,50 @@ fun PSBillAppMainView() {
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = PSBillThemeColors.Surface) {
-                NavigationBarItem(
-                    selected = selectedTab == "SESSIONS",
-                    onClick = { selectedTab = "SESSIONS" },
-                    icon = { Icon(Icons.Filled.Timer, contentDescription = null) },
-                    label = { Text("Sessions", fontSize = 12.sp) },
-                    colors = NavigationBarItemDefaults.colors(selectedIconColor = PSBillThemeColors.PrimaryAccent, indicatorColor = PSBillThemeColors.SurfaceAlt)
-                )
-                // Compiled-in tabs (modules.properties → CompiledModules)
-                CompiledModules.features.sortedBy { it.order }.forEach { tab ->
+            if (!wide) NavigationBar(containerColor = PSBillThemeColors.Surface) {
+                navItems.forEach { (key, label, icon) ->
                     NavigationBarItem(
-                        selected = selectedTab == tab.key,
-                        onClick = { selectedTab = tab.key },
-                        icon = { Icon(tab.icon, contentDescription = null) },
-                        label = { Text(tab.label, fontSize = 12.sp) },
+                        selected = selectedTab == key,
+                        onClick = { selectedTab = key },
+                        icon = { Icon(icon, contentDescription = label) },
+                        label = { Text(label, fontSize = 11.sp, maxLines = 1) },
+                        alwaysShowLabel = navItems.size <= 5,
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = PSBillThemeColors.PrimaryAccent, indicatorColor = PSBillThemeColors.SurfaceAlt)
                     )
                 }
             }
         }
     ) { padding ->
+      CompositionLocalProvider(LocalPsProfile provides profile, LocalPsApi provides api) {
+      Row(Modifier.fillMaxSize().padding(padding)) {
+        if (wide) NavigationRail(containerColor = PSBillThemeColors.Surface) {
+            Spacer(Modifier.height(8.dp))
+            navItems.forEach { (key, label, icon) ->
+                NavigationRailItem(
+                    selected = selectedTab == key,
+                    onClick = { selectedTab = key },
+                    icon = { Icon(icon, contentDescription = label) },
+                    label = { Text(label, fontSize = 11.sp) },
+                    colors = NavigationRailItemDefaults.colors(selectedIconColor = PSBillThemeColors.PrimaryAccent, indicatorColor = PSBillThemeColors.SurfaceAlt)
+                )
+            }
+        }
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(horizontal = if (wide) 24.dp else 16.dp, vertical = 16.dp),
             contentAlignment = Alignment.TopCenter
         ) {
-            Box(Modifier.fillMaxWidth().widthIn(max = 1120.dp)) {
+            Box(Modifier.fillMaxWidth().widthIn(max = 1600.dp)) {
             when (selectedTab) {
+                "MORE" -> ManageHub(
+                    profile = profile,
+                    nodes = nodes,
+                    games = games,
+                    onRefresh = { fetchApiData(); loadProfile() },
+                    onSignOut = { confirmSignOut = true },
+                )
                 "SESSIONS" -> PSBillSessionsView(
                     nodes,
                     pairedNode,
@@ -936,6 +997,18 @@ fun PSBillAppMainView() {
             }
             }
         }
+      }
+      }
+    }
+
+    if (confirmSignOut) {
+        PsConfirm(
+            title = "Sign out?",
+            text = "This phone stops getting screen alerts until someone signs in again. The saved password is removed.",
+            confirmText = "Sign out",
+            onConfirm = { confirmSignOut = false; signOut() },
+            onDismiss = { confirmSignOut = false },
+        )
     }
 
     if (showApiConfig) {
@@ -1002,60 +1075,93 @@ private fun PSBillLoginScreen(
     password: String,
     onPasswordChange: (String) -> Unit,
     isLoading: Boolean,
+    error: String?,
     onLogin: () -> Unit
 ) {
     var showPassword by remember { mutableStateOf(false) }
-    val brightInputColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White,
-        unfocusedTextColor = Color.White,
-        focusedLabelColor = PSBillThemeColors.TextSecondary,
-        unfocusedLabelColor = PSBillThemeColors.TextSecondary,
-        cursorColor = Color.White,
-        focusedBorderColor = PSBillThemeColors.PrimaryAccent,
-        unfocusedBorderColor = PSBillThemeColors.Border
-    )
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val wide = isWide()
 
     // Scrolls above the keyboard so the Sign in button is never hidden.
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(PSBillThemeColors.Canvas)
-            .imePadding()
-            .verticalScroll(androidx.compose.foundation.rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(Color(0xFF1B1240), PSBillThemeColors.Canvas, PSBillThemeColors.Canvas)
+                )
+            )
+            .imePadding(),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 560.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(PSBillThemeColors.Surface)
-                .border(1.dp, PSBillThemeColors.Border, RoundedCornerShape(16.dp))
-                .padding(16.dp)
+        Row(
+            Modifier.fillMaxWidth().widthIn(max = if (wide) 980.dp else 560.dp)
+                .verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(32.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Sign in to PSBill", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                Text("Use the same email and password as the Ajiriwa dashboard.", color = PSBillThemeColors.TextSecondary, fontSize = 13.sp)
+            if (wide) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LoginBrand(big = true)
+                    listOf(
+                        "Every screen, session and shilling in one place",
+                        "Sales per screen, per game and per hour - export PDF, Excel or CSV",
+                        "Queue, top-ups and alerts that ring on your phone",
+                        "WiFi billing for your lounge's own router",
+                    ).forEach { line ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = PsTone.Good, modifier = Modifier.size(18.dp))
+                            Text(line, color = PSBillThemeColors.TextSecondary, fontSize = 14.sp)
+                        }
+                    }
+                }
+            }
+            Column(
+                Modifier.weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(PSBillThemeColors.Surface)
+                    .border(1.dp, PSBillThemeColors.Border, RoundedCornerShape(20.dp))
+                    .padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                if (!wide) LoginBrand(big = false)
+                Text("Sign in", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text("Use the email and password of your lounge account (the same as the Ajiriwa dashboard).",
+                    color = PSBillThemeColors.TextSecondary, fontSize = 13.sp)
 
                 OutlinedTextField(
                     value = email,
                     onValueChange = onEmailChange,
                     label = { Text("Email") },
+                    leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    colors = brightInputColors
+                    isError = error != null && email.isBlank(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Next
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onNext = { focus.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }
+                    ),
                 )
 
                 OutlinedTextField(
                     value = password,
                     onValueChange = onPasswordChange,
                     label = { Text("Password") },
+                    leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    colors = brightInputColors,
+                    isError = error != null && password.isBlank(),
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = { focus.clearFocus(); if (!isLoading) onLogin() }
+                    ),
                     trailingIcon = {
                         IconButton(onClick = { showPassword = !showPassword }) {
                             Icon(
@@ -1066,19 +1172,51 @@ private fun PSBillLoginScreen(
                     }
                 )
 
+                if (error != null) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(PsTone.Bad.copy(alpha = 0.14f)).padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = PsTone.Bad, modifier = Modifier.size(18.dp))
+                        Text(error, color = PSBillThemeColors.TextPrimary, fontSize = 13.sp)
+                    }
+                }
+
                 Button(
-                    onClick = onLogin,
+                    onClick = { focus.clearFocus(); onLogin() },
                     enabled = !isLoading,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PSBillThemeColors.PrimaryAccent)
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Signing in...")
                     } else {
-                        Text("Sign in")
+                        Text("Sign in", fontWeight = FontWeight.SemiBold)
                     }
                 }
+                Text("Forgot it? Reset the password on ajiriwa.gidraf.dev, then sign in here.",
+                    color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
             }
+        }
+    }
+}
+
+@Composable
+private fun LoginBrand(big: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(
+            Modifier.size(if (big) 56.dp else 44.dp).clip(RoundedCornerShape(14.dp)).background(PSBillThemeColors.PrimaryAccent),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.SportsEsports, contentDescription = null, tint = Color.White, modifier = Modifier.size(if (big) 32.dp else 26.dp))
+        }
+        Column {
+            Text("PSBill", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = if (big) 30.sp else 22.sp)
+            Text("Gaming lounge manager", color = PSBillThemeColors.TextSecondary, fontSize = 13.sp)
         }
     }
 }
