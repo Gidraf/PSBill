@@ -74,7 +74,7 @@ BUILDER_NAME=$(hostname)
 IMAGE=psbill-android-builder
 VERSION_OFFSET=100
 VERSION_PREFIX=1
-AUTO_APPS=ajiriwa psbill
+AUTO_APPS=ajiriwa psbill tv
 STATE_DIR=$BASE/state
 ENV
 umask 022
