@@ -48,7 +48,9 @@ Logs: `journalctl -u psbill-builder -f`. The admin page shows **Builder online**
 
 Options (env for setup.sh): `CVPAP_URL` (default `https://api.ajiriwa.gidraf.dev`),
 `REPO_URL`, `BRANCH`. Edit `/opt/psbill-build/builder.env` later for `AUTO_APPS`
-(empty = no automatic full builds) or `VERSION_OFFSET`.
+(empty = no automatic full builds), `PRESET_EVERY_HOURS` (default 24: after the full builds, the
+default app of each business type - list from CVPAP `/api/v1/app-builds/worker/presets` - is built
+at most once a day; 0 = never, partners then get the full build) or `VERSION_OFFSET`.
 
 ## Versions
 

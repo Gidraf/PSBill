@@ -114,10 +114,23 @@ class KioskService : Service() {
     private val meterLevel = mutableStateOf(0)
     // Continue in the BACK dialog shows the meter for a few seconds (elapsedRealtime)
     private var meterPeekUntil = 0L
-    // Pay-first finale: the last 10 seconds as a big countdown, then "TIME UP"
-    private val finaleText = mutableStateOf<String?>(null)
-    private var finaleView: ComposeView? = null
-    private var finaleHideJob: Job? = null
+    // Pay-first end: a small 3D countdown above the meter (last 10 s), top-up options the
+    // remote can pick (last 2 min), then a brick wall with the lounge name closes the screen.
+    private val countdownText = mutableStateOf<String?>(null)
+    private val countdownCollapsing = mutableStateOf(false)
+    // hidden | options | busy | offer | info
+    private val endPanelMode = mutableStateOf("hidden")
+    private val endPanelMsg = mutableStateOf("")
+    private val offerMinutes = mutableStateOf(0)
+    private val offerKes = mutableStateOf(0.0)
+    private var endPanelView: android.widget.FrameLayout? = null
+    private var endPanelFocusable = false
+    private var endPanelInfoJob: Job? = null
+    private var topupOptionsDismissed = false
+    private var timeUpShown = false
+    private var brickView: ComposeView? = null
+    private val brickLines = mutableStateOf(Triple("", "", ""))
+    private var loungeName = ""
     // The player's top-up request (sent from the TV, approved by staff)
     private var lastTopupRequestStatus: String? = null
     private var lastTopupRequestAt: String? = null
@@ -281,6 +294,10 @@ class KioskService : Service() {
         private const val HDMI_POLL_MS = 5_000L
         /** Loser pay: the game result pop-up stays this long, then fades. */
         private const val RESULT_POPUP_MS = 6_000L
+        /** Top-up options show bottom-right this long before a pay-first session ends. */
+        private const val TOPUP_PANEL_SECS = 120
+        /** Bricks build (2.3 s), the lounge name shows, then it fades into the lock screen. */
+        private const val BRICK_WALL_MS = 6_500L
         // Console off this long during a session -> cover the HDMI input (the TV's own
         // no-signal countdown is much longer, so a quick console restart is not covered).
         private const val CONSOLE_OFF_GRACE_MS = 20_000L
@@ -427,7 +444,7 @@ class KioskService : Service() {
                         }
 
                         val unlockIntent = Intent("com.example.psbill.ACTION_UNLOCK")
-                        sendBroadcast(unlockIntent)
+                        sendBroadcast(unlockIntent.setPackage(packageName))
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                             showTimerOverlay(mockJson)
@@ -482,7 +499,7 @@ class KioskService : Service() {
                             val syncIntent = Intent("com.example.psbill.ACTION_SYNC_DATA").apply {
                                 putExtra("sync_data", dataStr)
                             }
-                            sendBroadcast(syncIntent)
+                            sendBroadcast(syncIntent.setPackage(packageName))
                             Log.d(TAG, "Loser Pay PENDING — broadcasting QR sync to LockActivity")
                             return START_STICKY
                         }
@@ -494,7 +511,7 @@ class KioskService : Service() {
                                     unlockDevice(deviceData)
                                 } else {
                                     val unlockIntent = Intent("com.example.psbill.ACTION_UNLOCK")
-                                    sendBroadcast(unlockIntent)
+                                    sendBroadcast(unlockIntent.setPackage(packageName))
                                     Handler(Looper.getMainLooper()).postDelayed({
                                         showTimerOverlay(deviceData)
                                         startScreenshotJob()
@@ -508,10 +525,10 @@ class KioskService : Service() {
                                 val invoice = deviceData.optJSONObject("last_invoice") ?: deviceData.optJSONObject("invoice")
                                 lockDevice(invoice)
                             } else {
-                                val syncIntent = Intent("com.example.psbill.ACTION_SYNC").apply {
+                                val syncIntent = Intent("com.example.psbill.ACTION_SYNC_DATA").apply {
                                     putExtra("sync_data", dataStr)
                                 }
-                                sendBroadcast(syncIntent)
+                                sendBroadcast(syncIntent.setPackage(packageName))
                             }
                         }
                     } catch (e: Exception) {
@@ -549,7 +566,7 @@ class KioskService : Service() {
                     
                     // Unlock station locally
                     val unlockIntent = Intent("com.example.psbill.ACTION_UNLOCK")
-                    sendBroadcast(unlockIntent)
+                    sendBroadcast(unlockIntent.setPackage(packageName))
                     
                     val mockJson = JSONObject().apply {
                         put("status", deviceStatus)
@@ -1042,6 +1059,13 @@ class KioskService : Service() {
             when (event) {
                 "lock_station" -> {
                     Handler(Looper.getMainLooper()).post {
+                        val dev = data.optJSONObject("device")
+                        if (dev != null && !dev.optBoolean("has_ended_session", true)) {
+                            // A reset (bill settled): the screen is clear for the next player.
+                            // The event still carries the old session log - never show it as a bill.
+                            onSessionReset()
+                            return@post
+                        }
                         deviceStatus = "LOCKED"
                         val invoice = data.optJSONObject("invoice")
                         lockDevice(invoice)
@@ -1056,10 +1080,10 @@ class KioskService : Service() {
                                 val invoice = data.optJSONObject("last_invoice") ?: data.optJSONObject("invoice")
                                 lockDevice(invoice)
                             } else {
-                                val syncIntent = Intent("com.example.psbill.ACTION_SYNC").apply {
+                                val syncIntent = Intent("com.example.psbill.ACTION_SYNC_DATA").apply {
                                     putExtra("sync_data", data.toString())
                                 }
-                                sendBroadcast(syncIntent)
+                                sendBroadcast(syncIntent.setPackage(packageName))
                             }
                         } else if (oldStatus == "LOCKED" || oldStatus == "PENDING" || !isOverlayAttached) {
                             unlockDevice(data)
@@ -1192,7 +1216,7 @@ class KioskService : Service() {
                             val syncIntent = Intent("com.example.psbill.ACTION_SYNC_DATA").apply {
                                 putExtra("sync_data", syncJson.toString())
                             }
-                            sendBroadcast(syncIntent)
+                            sendBroadcast(syncIntent.setPackage(packageName))
                         }
 
                         Log.d(TAG, "[LoserPay] Session started, status: $status, supervised: $isSupervised")
@@ -1647,7 +1671,7 @@ class KioskService : Service() {
                         val syncIntent = Intent("com.example.psbill.ACTION_SYNC_DATA").apply {
                             putExtra("sync_data", body)
                         }
-                        sendBroadcast(syncIntent)
+                        sendBroadcast(syncIntent.setPackage(packageName))
 
                         withContext(Dispatchers.Main) {
                             flushOfflineSessions()
@@ -1755,6 +1779,22 @@ class KioskService : Service() {
         loserPaySyncSig = ""
     }
 
+    /** Staff reset the screen: no bill, no add-time, just the lock screen for the next player. */
+    private fun onSessionReset() {
+        deviceStatus = "LOCKED"
+        localSessionEndedPendingServerConfirm = false
+        localSecondsRemaining = 0
+        localSecondsElapsed = 0
+        localSecondsElapsedOvertime = 0
+        queuedOvertimeSecs = 0
+        activeBillingKes = 0.0
+        clearPersistedEndedInvoice()
+        hideFinale()
+        sendBroadcast(Intent(LockActivity.ACTION_SESSION_RESET).setPackage(packageName))
+        if (!LockActivity.isLockActivityVisible) lockDevice(null)
+        clearPersistedEndedInvoice()
+    }
+
     private fun launchLockScreen(invoiceJson: JSONObject?) {
         if (RemoteControl.isPaused(this)) return   // paused by the owner: no lock screen
         val intent = Intent(this, LockActivity::class.java).apply {
@@ -1823,7 +1863,7 @@ class KioskService : Service() {
         
         // Broadcast local unlock to close LockActivity if it's active
         val unlockIntent = Intent("com.example.psbill.ACTION_UNLOCK")
-        sendBroadcast(unlockIntent)
+        sendBroadcast(unlockIntent.setPackage(packageName))
         
         // Launch DeviceAuthActivity to show QR linking screen
         val intent = Intent(this, DeviceAuthActivity::class.java).apply {
@@ -1842,7 +1882,7 @@ class KioskService : Service() {
         stopLockScreenWatchdog()
         // 1. Broadcast the unlock intent — LockActivity will call stopLockTask() + finish()
         val unlockIntent = Intent("com.example.psbill.ACTION_UNLOCK")
-        sendBroadcast(unlockIntent)
+        sendBroadcast(unlockIntent.setPackage(packageName))
 
         // 2. Give LockActivity time to process the broadcast and dismiss itself
         //    before we attach the timer overlay to the WindowManager.
@@ -2260,6 +2300,7 @@ class KioskService : Service() {
 
     /** Queue info from the 2-second sync: pop up a short notice when someone joins. */
     private fun onQueueInfo(data: JSONObject) {
+        data.optString("arcade_name", "").trim().takeIf { it.isNotEmpty() && it != "null" }?.let { loungeName = it }
         turnSeconds = data.optInt("turn_seconds", turnSeconds).coerceAtLeast(300)
         // The sync carries the EFFECTIVE overtime price (the screen's, else the business's).
         val ot = data.optDouble("overtime_rate_per_minute_kes", overtimeRate)
@@ -2346,7 +2387,7 @@ class KioskService : Service() {
         }
     }
 
-    /** Staff answered the player's top-up request: tell the player. */
+    /** Staff answered the player's top-up request (or made an offer): show it bottom-right. */
     private fun onTopupRequest(data: JSONObject) {
         val r = data.optJSONObject("topup_request") ?: return
         val status = r.optString("status")
@@ -2355,36 +2396,331 @@ class KioskService : Service() {
         val sameRequest = at == lastTopupRequestAt
         lastTopupRequestAt = at
         lastTopupRequestStatus = status
+        val live = deviceStatus == "ACTIVE" || deviceStatus == "OVERTIME"
+        if (status == "PROPOSED" && live) {
+            // the staff offer a price: the player takes it or not with the remote
+            val o = r.optJSONObject("offer")
+            offerMinutes.value = o?.optInt("minutes", 0) ?: 0
+            offerKes.value = o?.optDouble("amount_kes", 0.0) ?: 0.0
+            if (offerMinutes.value > 0) { endPanelMode.value = "offer"; refreshEndPanel() }
+            return
+        }
         if (!sameRequest) return  // first sight after a restart: nothing to announce
         when (status) {
-            "APPROVED" -> {
+            "APPROVED", "ACCEPTED" -> {
                 val mins = r.optInt("added_minutes", r.optInt("minutes", 0))
-                showNotice("Top-up approved: +$mins min\nEnjoy the game!", 8_000)
+                topupOptionsDismissed = false
+                showPanelInfo("+$mins min added\nEnjoy the game!", 8_000)
                 peekMeter()
             }
-            "DECLINED" -> showNotice("Top-up not approved\nTalk to the staff", 10_000)
+            "DECLINED", "REJECTED" -> {
+                topupOptionsDismissed = true
+                showPanelInfo(
+                    if (queueWaiting > 0) "No more time on this screen\nThe next player goes on when your time ends"
+                    else "Top-up not approved\nTalk to the staff",
+                    10_000
+                )
+            }
         }
     }
 
-    /** Pay-first: the last 10 seconds count down big on screen, then "TIME UP". */
-    @RequiresApi(Build.VERSION_CODES.M)
+    /** The player's answer to the staff's price offer. */
+    private fun respondToOffer(accept: Boolean) {
+        val id = getKioskDeviceId().ifEmpty { getMacAddress() }
+        val token = getEncryptedPrefs(this).getString("auth_token", "") ?: ""
+        val req = Request.Builder()
+            .url("${apiBaseUrl(serverDomain)}/api/v1/kiosk/devices/$id/topup-request/respond")
+            .header("Authorization", "Bearer $token")
+            .header("X-Device-Fingerprint", getDeviceFingerprint())
+            .post(JSONObject().put("accept", accept).toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        endPanelMode.value = "busy"
+        endPanelMsg.value = if (accept) "Adding your time..." else "OK"
+        refreshEndPanel()
+        serviceScope.launch(Dispatchers.IO) {
+            val (ok, msg) = try {
+                client.newCall(req).execute().use { resp ->
+                    val text = resp.body?.string().orEmpty()
+                    if (resp.isSuccessful) {
+                        lastTopupRequestStatus = if (accept) "ACCEPTED" else "REJECTED"
+                        true to (if (accept) "+${offerMinutes.value} min added\nPay KES ${formatRate(offerKes.value)} to the staff"
+                                 else if (queueWaiting > 0) "No problem\nThe next player goes on when your time ends"
+                                 else "No problem\nPress BACK any time to add time")
+                    } else false to (try { JSONObject(text).optString("error") } catch (_: Exception) { "" }).ifBlank { "Ask the staff" }
+                }
+            } catch (e: Exception) { false to "No connection - ask the staff" }
+            withContext(Dispatchers.Main) {
+                if (ok && accept) { topupOptionsDismissed = false; peekMeter() }
+                if (ok && !accept) topupOptionsDismissed = true
+                showPanelInfo(msg, 8_000)
+            }
+        }
+    }
+
+    /**
+     * Pay-first end, called every second while the time runs:
+     * - last TOPUP_PANEL_SECS: top-up options bottom-right, picked with the remote;
+     * - last 10 s: a small rotating 3D countdown just above the meter (the game stays visible);
+     * - 0: the countdown collapses and a brick wall builds up with the lounge name.
+     */
     private fun updateFinale(secsLeft: Int) {
         if (isAdminMode.value || billingMode != "PREPAID") { hideFinale(); return }
-        when {
-            secsLeft in 1..10 -> { finaleText.value = secsLeft.toString(); showFinale() }
-            secsLeft <= 0 -> {
-                finaleText.value = "TIME UP"
-                showFinale()
-                finaleHideJob?.cancel()
-                finaleHideJob = serviceScope.launch { delay(3_500); withContext(Dispatchers.Main) { hideFinale() } }
-            }
-            else -> hideFinale()  // topped up
+        if (secsLeft > 0) timeUpShown = false
+        val asking = lastTopupRequestStatus == "PENDING" || lastTopupRequestStatus == "PROPOSED"
+        if (secsLeft in 1..TOPUP_PANEL_SECS && endPanelMode.value == "hidden" && !topupOptionsDismissed &&
+            !asking && topupRate() > 0) {
+            endPanelMode.value = "options"
+        } else if (secsLeft > TOPUP_PANEL_SECS && endPanelMode.value == "options") {
+            endPanelMode.value = "hidden"      // topped up at the counter
+        }
+        if (secsLeft > TOPUP_PANEL_SECS) topupOptionsDismissed = false
+        countdownText.value = if (secsLeft in 1..10) secsLeft.toString() else null
+        if (secsLeft <= 0) { timeUp(); return }
+        countdownCollapsing.value = false
+        refreshEndPanel()
+    }
+
+    private fun timeUp() {
+        if (timeUpShown) return
+        timeUpShown = true
+        endPanelInfoJob?.cancel()
+        endPanelMode.value = "hidden"
+        countdownText.value = countdownText.value ?: "0"
+        countdownCollapsing.value = true
+        refreshEndPanel()
+        serviceScope.launch {
+            delay(450)
+            removeEndPanel()
+            showBrickWall()
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
-    private fun showFinale() {
-        if (finaleView != null) return
+    /** A short message in the bottom-right panel. */
+    private fun showPanelInfo(text: String, millis: Long) {
+        endPanelMsg.value = text
+        endPanelMode.value = "info"
+        refreshEndPanel()
+        endPanelInfoJob?.cancel()
+        endPanelInfoJob = serviceScope.launch {
+            delay(millis)
+            if (endPanelMode.value == "info") { endPanelMode.value = "hidden"; refreshEndPanel() }
+        }
+    }
+
+    /** Add, update (focusable only while there is something to pick) or remove the panel window. */
+    private fun refreshEndPanel() {
+        val live = deviceStatus == "ACTIVE" || deviceStatus == "OVERTIME"
+        val needed = live && !LockActivity.isLockActivityVisible &&
+            (countdownText.value != null || endPanelMode.value != "hidden")
+        if (!needed) { if (!countdownCollapsing.value) removeEndPanel(); return }
+        if (!Settings.canDrawOverlays(this)) return
+        val focusable = endPanelMode.value == "options" || endPanelMode.value == "offer"
+        val flags = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            (if (focusable) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+            flags,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            x = 24
+            y = (84 * resources.displayMetrics.density).toInt()   // just above the meter
+        }
+        val existing = endPanelView
+        if (existing != null) {
+            if (focusable != endPanelFocusable) {
+                endPanelFocusable = focusable
+                try { windowManager?.updateViewLayout(existing, params) } catch (_: Exception) {}
+                if (focusable) existing.requestFocus()
+            }
+            return
+        }
+        val owner = CustomLifecycleOwner().also { it.start() }
+        val frame = object : android.widget.FrameLayout(this) {
+            override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                    if (event.action == android.view.KeyEvent.ACTION_UP) {
+                        // BACK closes the options; the time keeps running
+                        if (endPanelMode.value == "options") topupOptionsDismissed = true
+                        endPanelMode.value = "hidden"
+                        refreshEndPanel()
+                    }
+                    return true
+                }
+                return super.dispatchKeyEvent(event)
+            }
+        }
+        frame.setViewTreeLifecycleOwner(owner)
+        frame.setViewTreeViewModelStoreOwner(CustomViewModelStoreOwner())
+        frame.setViewTreeSavedStateRegistryOwner(CustomSavedStateRegistryOwner())
+        frame.addView(ComposeView(this).apply { setContent { EndPanel() } })
+        try {
+            windowManager?.addView(frame, params)
+            endPanelView = frame
+            endPanelFocusable = focusable
+            if (focusable) frame.requestFocus()
+        } catch (e: Exception) {
+            Log.e(TAG, "End panel failed: ${e.message}")
+        }
+    }
+
+    private fun removeEndPanel() {
+        countdownCollapsing.value = false
+        val v = endPanelView ?: return
+        try { windowManager?.removeView(v) } catch (_: Exception) {}
+        endPanelView = null
+        endPanelFocusable = false
+    }
+
+    /** Everything of the end sequence off the screen (reset, admin mode, a new session). */
+    private fun hideFinale() {
+        countdownText.value = null
+        endPanelInfoJob?.cancel()
+        endPanelMode.value = "hidden"
+        removeEndPanel()
+        removeBrickWall()
+    }
+
+    @Composable
+    private fun EndPanel() {
+        val count = countdownText.value
+        val mode = endPanelMode.value
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (mode != "hidden") {
+                Column(
+                    Modifier
+                        .background(Color(0xF0111827), RoundedCornerShape(12.dp))
+                        .border(1.5.dp, Color(0xFF6366F1), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    when (mode) {
+                        "options" -> TopupOptions()
+                        "offer" -> OfferPanel()
+                        else -> endPanelMsg.value.split("\n").forEachIndexed { i, line ->
+                            Text(line, color = if (i == 0) Color.White else Color(0xFFC7D2FE),
+                                fontSize = if (i == 0) 13.sp else 11.sp,
+                                fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+            if (count != null) Countdown3D(count, countdownCollapsing.value)
+        }
+    }
+
+    @Composable
+    private fun TopupOptions() {
+        val rate = topupRate()
+        val first = remember { FocusRequester() }
+        LaunchedEffect(Unit) { delay(150); runCatching { first.requestFocus() } }
+        Text("Keep playing? Add time", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(
+            if (overchargeNow() && overtimeRate > ratePerMinute) "KES ${formatRate(rate)}/min - ${whyOvercharge()}"
+            else "KES ${formatRate(rate)}/min - pay the staff",
+            color = Color(0xFFC7D2FE), fontSize = 10.sp,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(15, 30, 60).forEachIndexed { i, mins ->
+                PanelButton(
+                    "+$mins min", "KES ${formatRate(rate * mins)}",
+                    if (i == 0) Modifier.focusRequester(first) else Modifier,
+                ) {
+                    endPanelMode.value = "busy"
+                    endPanelMsg.value = "Sending..."
+                    sendTopupRequest(mins) { ok, msg ->
+                        if (ok) { endPanelMsg.value = msg.replace(". ", "\n"); endPanelMode.value = "busy" }
+                        else showPanelInfo(msg, 8_000)
+                    }
+                }
+            }
+            PanelButton("No thanks", null, Modifier) {
+                topupOptionsDismissed = true
+                endPanelMode.value = "hidden"
+                refreshEndPanel()
+            }
+        }
+    }
+
+    @Composable
+    private fun OfferPanel() {
+        val first = remember { FocusRequester() }
+        LaunchedEffect(Unit) { delay(150); runCatching { first.requestFocus() } }
+        Text("The staff offer you", color = Color(0xFFC7D2FE), fontSize = 11.sp)
+        Text("${offerMinutes.value} min for KES ${formatRate(offerKes.value)}", color = Color.White,
+            fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PanelButton("Accept", null, Modifier.focusRequester(first)) { respondToOffer(true) }
+            PanelButton("No", null, Modifier) { respondToOffer(false) }
+        }
+    }
+
+    @Composable
+    private fun PanelButton(title: String, sub: String?, modifier: Modifier, onClick: () -> Unit) {
+        var focused by remember { androidx.compose.runtime.mutableStateOf(false) }
+        Column(
+            modifier
+                .onFocusChanged { focused = it.isFocused }
+                .graphicsLayer { val k = if (focused) 1.08f else 1f; scaleX = k; scaleY = k }
+                .background(if (focused) Color(0xFF6366F1) else Color(0xFF1F2937), RoundedCornerShape(9.dp))
+                .border(1.5.dp, if (focused) Color.White else Color(0xFF374151), RoundedCornerShape(9.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            if (sub != null) Text(sub, color = Color(0xFFE0E7FF), fontSize = 10.sp)
+        }
+    }
+
+    /** The last 10 seconds: a small cube-like tile that spins in every new number. */
+    @Composable
+    private fun Countdown3D(text: String, collapsing: Boolean) {
+        val flip = remember(text) { Animatable(-90f) }
+        LaunchedEffect(text) { flip.animateTo(0f, tween(420)) }
+        val wobble by rememberInfiniteTransition(label = "cdWobble").animateFloat(
+            initialValue = -16f, targetValue = 16f,
+            animationSpec = infiniteRepeatable(tween(1300), RepeatMode.Reverse), label = "cdWobbleY",
+        )
+        val shrink by animateFloatAsState(if (collapsing) 0f else 1f, tween(420), label = "cdCollapse")
+        Box(
+            Modifier
+                .size(84.dp)
+                .graphicsLayer {
+                    cameraDistance = 14f * density
+                    rotationY = flip.value + wobble
+                    rotationX = 10f
+                    scaleX = shrink; scaleY = shrink; alpha = shrink
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            // the tile's "side": a darker copy behind gives it depth while it turns
+            Box(Modifier.matchParentSize().padding(start = 6.dp, top = 6.dp)
+                .background(Color(0xFF7C2D12), RoundedCornerShape(16.dp)))
+            Box(
+                Modifier.matchParentSize().padding(end = 6.dp, bottom = 6.dp)
+                    .background(Brush.verticalGradient(listOf(Color(0xFFFBBF24), Color(0xFFD97706))), RoundedCornerShape(16.dp))
+                    .border(2.dp, Color(0xFFFEF3C7), RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Black)
+            }
+        }
+    }
+
+    /** Time up: bricks build up from the bottom until the screen is closed, then the lounge name. */
+    private fun showBrickWall() {
+        if (brickView != null || !Settings.canDrawOverlays(this)) return
+        val name = loungeName.ifBlank { "Thanks for playing" }
+        val next = if (queueWaiting > 0) "The next player is being called" else "Ask the staff to add time"
+        brickLines.value = Triple(name, "Time up - thanks for playing!", next)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -2392,7 +2728,7 @@ class KioskService : Service() {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
                 @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
-            // see-through to the game and never takes the remote/controller
+            // never takes the remote: the lock screen underneath keeps it
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
@@ -2403,50 +2739,75 @@ class KioskService : Service() {
             setViewTreeLifecycleOwner(owner)
             setViewTreeViewModelStoreOwner(CustomViewModelStoreOwner())
             setViewTreeSavedStateRegistryOwner(CustomSavedStateRegistryOwner())
-            setContent { FinaleOverlay() }
+            setContent { BrickWall() }
         }
         try {
             windowManager?.addView(view, params)
-            finaleView = view
+            brickView = view
+            serviceScope.launch { delay(BRICK_WALL_MS); removeBrickWall() }
         } catch (e: Exception) {
-            Log.e(TAG, "Finale overlay failed: ${e.message}")
+            Log.e(TAG, "Brick wall failed: ${e.message}")
         }
     }
 
-    private fun hideFinale() {
-        finaleText.value = null
-        val v = finaleView ?: return
+    private fun removeBrickWall() {
+        val v = brickView ?: return
         try { windowManager?.removeView(v) } catch (_: Exception) {}
-        finaleView = null
+        brickView = null
     }
 
     @Composable
-    private fun FinaleOverlay() {
-        val text = finaleText.value ?: return
-        val over = text == "TIME UP"
-        // every new number pops in: big -> normal, bright -> settled
-        val pop = remember(text) { Animatable(1.6f) }
-        LaunchedEffect(text) { pop.animateTo(1f, tween(450)) }
-        val color = if (over) Color(0xFFEF4444) else Color(0xFFFBBF24)
-        Box(
-            Modifier.fillMaxSize().background(if (over) Color(0xB3000000) else Color(0x33000000)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text,
-                    color = color,
-                    fontSize = if (over) 96.sp else 140.sp,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value; alpha = (2.2f - pop.value).coerceIn(0f, 1f) },
-                )
-                Text(
-                    if (over) "Thanks for playing! Ask the staff to add time." else "Time almost up - press BACK to add time",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.background(Color(0x99000000), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
-                )
+    private fun BrickWall() {
+        val (name, line1, line2) = brickLines.value
+        val build = remember { Animatable(0f) }
+        val words = remember { Animatable(0f) }
+        val fade = remember { Animatable(1f) }
+        LaunchedEffect(Unit) {
+            build.animateTo(1f, tween(2300, easing = androidx.compose.animation.core.LinearEasing))
+            words.animateTo(1f, tween(500))
+            delay(BRICK_WALL_MS - 2300 - 500 - 700)
+            fade.animateTo(0f, tween(600))
+        }
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = fade.value }, contentAlignment = Alignment.Center) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                val rows = 10
+                val bh = size.height / rows
+                val bw = bh * 2.1f
+                val cols = (size.width / bw).toInt() + 2
+                val p = build.value
+                for (r in 0 until rows) {               // r = 0 is the bottom row
+                    val y = size.height - (r + 1) * bh
+                    val shift = if (r % 2 == 1) -bw / 2 else 0f
+                    for (c in 0 until cols) {
+                        // rows go up one after the other; bricks of a row land left to right
+                        val t0 = r.toFloat() / rows * 0.82f + c.toFloat() / cols * 0.1f
+                        val k = ((p - t0) / 0.12f).coerceIn(0f, 1f)
+                        if (k <= 0f) continue
+                        val ease = 1f - (1f - k) * (1f - k) * (1f - k)
+                        val drop = (1f - ease) * (y + bh)
+                        val shade = (r * 7 + c * 3) % 3
+                        val brick = when (shade) { 0 -> Color(0xFF9A3412); 1 -> Color(0xFFB45309); else -> Color(0xFF7C2D12) }
+                        val tl = androidx.compose.ui.geometry.Offset(c * bw + shift + 3f, y - drop + 3f)
+                        val sz = androidx.compose.ui.geometry.Size(bw - 6f, bh - 6f)
+                        drawRect(Color(0xFF1C1917), tl.copy(x = tl.x - 3f, y = tl.y - 3f),
+                            androidx.compose.ui.geometry.Size(bw, bh))          // mortar
+                        drawRect(brick, tl, sz)
+                        drawRect(Color(0x33FFFFFF), tl, androidx.compose.ui.geometry.Size(sz.width, sz.height * 0.18f))
+                    }
+                }
+            }
+            Column(
+                Modifier.graphicsLayer { alpha = words.value; val k = 0.85f + 0.15f * words.value; scaleX = k; scaleY = k }
+                    .background(Color(0xD90B0F19), RoundedCornerShape(20.dp))
+                    .border(2.dp, Color(0xFFFBBF24), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 48.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(name, color = Color(0xFFFBBF24), fontSize = 52.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(10.dp))
+                Text(line1, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                Text(line2, color = Color(0xFFCBD5E1), fontSize = 18.sp)
             }
         }
     }

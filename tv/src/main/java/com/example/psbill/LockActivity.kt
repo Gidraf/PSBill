@@ -121,6 +121,26 @@ class LockActivity : ComponentActivity() {
         }
     }
 
+    private val resetReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) { clearEndedSession() }
+    }
+
+    /** The bill was settled (reset): no summary, no add-time, nothing left from the last player. */
+    private fun clearEndedSession() {
+        showInvoiceDialog = false
+        hasEndedSession = false
+        endedSessionAcknowledged = false
+        invoiceAmount = 0.0
+        invoiceDuration = 0
+        invoiceGame = ""
+        invoiceBillingMode = ""
+        endedSessionAmount = 0.0
+        endedSessionGame = ""
+        endedSessionBillingMode = ""
+        topupMessage = null
+        intent?.removeExtra("show_invoice")
+    }
+
     private var totalRevenue by mutableStateOf(0.0)
     private val recentSessions = mutableStateListOf<JSONObject>()
     private val gamesPlayedAnalytics = mutableStateListOf<JSONObject>()
@@ -292,10 +312,8 @@ class LockActivity : ComponentActivity() {
                 }
                 showInvoiceDialog = true
             } else if (!serverHasEnded) {
-                // A new session started — reset the acknowledged flag for the next end cycle.
-                endedSessionAcknowledged = false
-                hasEndedSession = false
-                showInvoiceDialog = false
+                // Reset or a new session: nothing left of the last bill (or its add-time box).
+                clearEndedSession()
             }
             
             val devName = json.optCleanString("device_name", json.optCleanString("name", ""))
@@ -429,6 +447,7 @@ class LockActivity : ComponentActivity() {
         } else {
             ContextCompat.registerReceiver(this, unlockReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         }
+        ContextCompat.registerReceiver(this, resetReceiver, IntentFilter(ACTION_SESSION_RESET), ContextCompat.RECEIVER_NOT_EXPORTED)
 
         val action = intent.getStringExtra("action")
         if (action == "request_projection") {
@@ -1215,6 +1234,9 @@ class LockActivity : ComponentActivity() {
         try {
             unregisterReceiver(gamesReceiver)
         } catch (e: Exception) {}
+        try {
+            unregisterReceiver(resetReceiver)
+        } catch (e: Exception) {}
     }
 
     // Back is blocked via dispatchKeyEvent — no onBackPressed override needed
@@ -1300,6 +1322,8 @@ class LockActivity : ComponentActivity() {
 
     companion object {
         var isLockActivityVisible = false
+        /** KioskService: staff reset the screen - drop the bill and the add-time box. */
+        const val ACTION_SESSION_RESET = "com.example.psbill.ACTION_SESSION_RESET"
         /** How long the lock screen must stay idle before an update installs. */
         private const val UPDATE_IDLE_MS = 120_000L
     }

@@ -4,7 +4,8 @@ Ajiriwa app builder agent (runs on the CVPAP server as a systemd service).
 
   • every few seconds: tells CVPAP it is online and claims the next build job
     (jobs are created by the super-admin: partner + app + modules);
-  • when main gets new commits: queues the full builds itself (reason AUTO);
+  • when main gets new commits: queues the full builds itself (reason AUTO),
+    then the per-business-type presets (at most once per PRESET_EVERY_HOURS);
   • a job: fetch code → get the signing key from CVPAP (kept encrypted there,
     written to a private temp dir only for the build) → build in Docker with the
     job's modules → verify the signature → upload the APK → CVPAP marks it DONE
@@ -12,7 +13,7 @@ Ajiriwa app builder agent (runs on the CVPAP server as a systemd service).
 
 Only the Python standard library is used. Settings come from the environment
 (EnvironmentFile written by setup.sh): CVPAP_URL, BUILDER_TOKEN, REPO_DIR, BRANCH,
-BUILDER_NAME, IMAGE, VERSION_OFFSET, VERSION_PREFIX, AUTO_APPS, STATE_DIR.
+BUILDER_NAME, IMAGE, VERSION_OFFSET, VERSION_PREFIX, AUTO_APPS, PRESET_EVERY_HOURS, STATE_DIR.
 """
 import collections
 import json
@@ -40,6 +41,9 @@ IMAGE = os.environ.get("IMAGE", "psbill-android-builder")
 VERSION_OFFSET = int(os.environ.get("VERSION_OFFSET", "100"))
 VERSION_PREFIX = os.environ.get("VERSION_PREFIX", "1")
 AUTO_APPS = os.environ.get("AUTO_APPS", "ajiriwa psbill tv").split()
+# Per-business-type preset builds (list from CVPAP, e.g. Ajiriwa for CV / shop / housing): built after
+# the full builds, at most once per this many hours so the builder is not busy all day. 0 = never.
+PRESET_EVERY_HOURS = float(os.environ.get("PRESET_EVERY_HOURS", "24"))
 STATE_DIR = os.environ.get("STATE_DIR", "/opt/psbill-build/state")
 POLL = 5
 FETCH_EVERY = 120
@@ -348,6 +352,30 @@ def auto_builds(head):
         f.write(head)
 
 
+def auto_preset_builds(head):
+    """The default app of each business type (CVPAP /worker/presets). Queued after the full builds,
+    so those come first; CVPAP answers DONE at once when that preset is already built from this commit."""
+    if PRESET_EVERY_HOURS <= 0:
+        return
+    marker = os.path.join(STATE_DIR, "auto-presets")
+    try:
+        last_head, last_at = open(marker).read().split()
+        if last_head == head or time.time() - float(last_at) < PRESET_EVERY_HOURS * 3600:
+            return
+    except (OSError, ValueError):
+        pass
+    status, res = api("/api/v1/app-builds/worker/presets")
+    if status != 200:
+        log(f"presets unavailable: {res.get('error') or status}")
+        return
+    for p in res.get("items") or []:
+        status, job = api("/api/v1/app-builds/worker/jobs",
+                          {"app": p["app"], "modules": p["modules"], "reason": "AUTO"})
+        log(f"preset build {p['app']} {','.join(p.get('business_types') or [])}: {job.get('status', status)}")
+    with open(marker, "w") as f:
+        f.write(f"{head} {time.time()}")
+
+
 def main():
     if not TOKEN:
         sys.exit("BUILDER_TOKEN is not set (run setup.sh)")
@@ -362,6 +390,7 @@ def main():
                 last_fetch = time.time()
                 if AUTO_APPS:
                     auto_builds(state["head"])
+                    auto_preset_builds(state["head"])
             status, job = api("/api/v1/app-builds/worker/claim", {"name": NAME})
             if status == 200 and job.get("id"):
                 state["busy"] = True
