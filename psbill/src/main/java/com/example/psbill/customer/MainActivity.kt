@@ -303,6 +303,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppUpdater.restore(this)
+        StaffAlertNav.fromIntent(intent)
         setContent {
             PSBillTheme {
                 val update by AppUpdater.state.collectAsState()
@@ -313,6 +314,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        StaffAlertNav.fromIntent(intent)   // a tapped staff alert: open that screen
     }
 
     override fun onStart() {
@@ -331,6 +338,11 @@ fun PSBillAppMainView() {
         context.getSharedPreferences("PSBillCustomerPrefs", Context.MODE_PRIVATE)
     }
     var selectedTab by remember { mutableStateOf("SESSIONS") } // SESSIONS, MATCHES, WIFI, SCREENS, REPORTS
+    // A tapped staff alert: go to Screens, which opens that screen's detail
+    val alertScreen = StaffAlertNav.openScreen.value
+    LaunchedEffect(alertScreen) {
+        if (alertScreen != null && CompiledModules.features.any { it.key == "SCREENS" }) selectedTab = "SCREENS"
+    }
     var token by remember { mutableStateOf(prefs.getString("auth_token", "") ?: "") }
     var emailInput by remember { mutableStateOf(prefs.getString("login_email", "") ?: "") }
     var passwordInput by remember { mutableStateOf(SavedLogin.password(context) ?: "") }

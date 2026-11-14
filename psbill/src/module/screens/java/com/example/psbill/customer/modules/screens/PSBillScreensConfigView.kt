@@ -1,5 +1,6 @@
 package com.example.psbill.customer
 
+import androidx.compose.foundation.verticalScroll
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -255,6 +256,14 @@ fun PSBillScreensConfigView(
 
 
     var openNodeId by remember { mutableStateOf<String?>(null) }
+    // A tapped staff alert (top-up, session ended, overtime, queue...): open that screen's detail
+    val alertScreen = com.example.psbill.customer.StaffAlertNav.openScreen.value
+    LaunchedEffect(alertScreen, nodes.size) {
+        val node = alertScreen?.let { id -> nodes.firstOrNull { it.optString("id") == id } } ?: return@LaunchedEffect
+        openNodeId = alertScreen
+        com.example.psbill.customer.StaffAlertNav.openScreen.value = null
+        loadScreenDetails(node)
+    }
     val openNode = nodes.firstOrNull { it.optString("id") == openNodeId }
 
     // While a screen is open and running, refresh every 5 s so the time left / bill is
@@ -1094,13 +1103,18 @@ private fun PricingRulesDialog(
     var rush by remember(current) { mutableStateOf(current?.optString("rush_hours").orEmpty().ifBlank { "17:00-22:00" }) }
     var speed by remember(current) { mutableStateOf(current?.optInt("wifi_speed_mbps", 5)?.toString() ?: "5") }
     var shotsOn by remember(current) { mutableStateOf(current?.optBoolean("screenshots_enabled") == true) }
+    var amber by remember(current) { mutableStateOf(current?.optInt("bill_amber_kes", 100)?.toString() ?: "100") }
+    var red by remember(current) { mutableStateOf(current?.optInt("bill_red_kes", 200)?.toString() ?: "200") }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
         title = { Text("Prices, rush hours & WiFi speed") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+            ) {
                 OutlinedTextField(
                     turn, { turn = it.filter(Char::isDigit).take(3) }, singleLine = true,
                     label = { Text("Turn length (minutes)") },
@@ -1116,6 +1130,23 @@ private fun PricingRulesDialog(
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
+                Text("Pay-after meter on the TV", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold)
+                Text("The meter turns amber, then red and blinking, as the bill grows. The player is told when the " +
+                    "minimum time is used up and at each colour. 0 = off.", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        amber, { amber = it.filter(Char::isDigit).take(6) }, singleLine = true,
+                        label = { Text("Amber at KSh") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        red, { red = it.filter(Char::isDigit).take(6) }, singleLine = true,
+                        label = { Text("Red at KSh") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Rush hours", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold)
@@ -1162,6 +1193,8 @@ private fun PricingRulesDialog(
                     put("rush_hours_enabled", rushOn)
                     put("rush_hours", rush.trim())
                     put("wifi_speed_mbps", speed.toIntOrNull() ?: 5)
+                    put("bill_amber_kes", amber.toIntOrNull() ?: 0)
+                    put("bill_red_kes", red.toIntOrNull() ?: 0)
                 }
                 onSave(body) { err -> saving = false; error = err }
             }) { Text(if (saving) "Saving..." else "Save") }

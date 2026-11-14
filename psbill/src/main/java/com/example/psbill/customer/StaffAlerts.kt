@@ -29,7 +29,26 @@ data class ScreenSnap(
     val topupMinutes: Int, val bill: Double, val game: String, val queuePending: Int = 0,
 )
 
-data class StaffAlert(val key: String, val urgent: Boolean, val title: String, val text: String)
+data class StaffAlert(val key: String, val urgent: Boolean, val title: String, val text: String) {
+    /** The screen this alert is about ("kind:<device id>"). */
+    val deviceId: String get() = key.substringAfter(':', "")
+}
+
+/**
+ * Tapping an alert opens that screen: the notification carries [EXTRA_SCREEN]; MainActivity puts it
+ * here, the app switches to Screens and the Screens tab opens that screen's detail (bill, call next,
+ * stop, free, top-up) and clears it.
+ */
+object StaffAlertNav {
+    const val EXTRA_SCREEN = "psbill.open_screen"
+    val openScreen = androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    fun fromIntent(intent: Intent?) {
+        val id = intent?.getStringExtra(EXTRA_SCREEN)?.takeIf { it.isNotBlank() } ?: return
+        openScreen.value = id
+        intent.removeExtra(EXTRA_SCREEN)
+    }
+}
 
 /**
  * What changed between two polls -> what the attendant must know (pure, no Android).
@@ -197,13 +216,23 @@ class StaffAlertService : Service() {
             .setPriority(if (a.urgent) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(if (a.urgent) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_STATUS)
             .setAutoCancel(true)
-            .setContentIntent(openApp())
+            .setContentIntent(openScreen(a))
+            .addAction(0, "Open screen", openScreen(a))
             .apply { if (Build.VERSION.SDK_INT < 26) setDefaults(Notification.DEFAULT_ALL) }
             .build()
         runCatching {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(a.key.hashCode(), n)
         }
     }
+
+    /** Opens the app on this alert's screen (one PendingIntent per alert, so each opens its own screen). */
+    private fun openScreen(a: StaffAlert): PendingIntent = PendingIntent.getActivity(
+        this, a.key.hashCode(),
+        Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(StaffAlertNav.EXTRA_SCREEN, a.deviceId),
+        PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
+    )
 
     private fun openApp(): PendingIntent = PendingIntent.getActivity(
         this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),

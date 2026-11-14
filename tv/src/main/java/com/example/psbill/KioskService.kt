@@ -211,6 +211,11 @@ class KioskService : Service() {
     private var queuedOvertimeSecs = 0
     private var turnWarningShown = false
     private var overtimeNoticeShown = false
+    // Pay-after meter by amount owed (owner's Prices: amber / red KES, 0 = off). The player is told
+    // once when the minimum is used up and the bill starts growing, then at amber and at red.
+    private var billAmberKes = 100.0
+    private var billRedKes = 200.0
+    private var billNoticeStage = 0     // 0 nothing said, 1 minimum used, 2 amber, 3 red
     private var billingMode = "POSTPAID"
     private var currentGame: String? = null
     private var localHdmiConnected = true
@@ -424,6 +429,7 @@ class KioskService : Service() {
                         queuedOvertimeSecs = syncJson.optInt("queued_overtime_seconds", 0)
                         overtimeNoticeShown = queuedOvertimeSecs > 0
                         turnWarningShown = overtimeNoticeShown
+                        billNoticeStage = billStage()
                         activeBillingKes = postpaidBill()
                         shouldRestore = true
                     }
@@ -552,6 +558,7 @@ class KioskService : Service() {
                     prepaidWarningShown = false
                     turnWarningShown = false
                     overtimeNoticeShown = false
+                    billNoticeStage = 0
                     elapsedDrift = 0
                     remainingDrift = 0
                     overtimeDrift = 0
@@ -1550,6 +1557,7 @@ class KioskService : Service() {
             queuedOvertimeSecs = data.optInt("queued_overtime_seconds", 0)
             overtimeNoticeShown = queuedOvertimeSecs > 0
             turnWarningShown = overtimeNoticeShown
+            billNoticeStage = billStage()
             remainingDrift = 0
             elapsedDrift = 0
             overtimeDrift = 0
@@ -1793,6 +1801,7 @@ class KioskService : Service() {
         localSecondsElapsedOvertime = 0
         queuedOvertimeSecs = 0
         activeBillingKes = 0.0
+        billNoticeStage = 0
         clearPersistedEndedInvoice()
         hideFinale()
         sendBroadcast(Intent(LockActivity.ACTION_SESSION_RESET).setPackage(packageName))
@@ -2298,15 +2307,18 @@ class KioskService : Service() {
                 secsRemaining <= 300 -> 1
                 else -> 0
             }
-            overchargeNow() -> when {
-                secsElapsed >= turnSeconds -> 2
-                secsElapsed >= turnSeconds - 300 -> 1
-                else -> 0
-            }
-            else -> 0
+            else -> maxOf(
+                if (overchargeNow()) when {
+                    secsElapsed >= turnSeconds -> 2
+                    secsElapsed >= turnSeconds - 300 -> 1
+                    else -> 0
+                } else 0,
+                billLevel(),
+            )
         }
         meterLevel.value = level
         if (mode != "PREPAID" && !isAdminMode.value && overchargeNow() && level > 0) tellPlayerAboutOvertime(level)
+        if (mode != "PREPAID" && !isAdminMode.value && status != "OVERTIME") tellPlayerAboutBill()
         if (mode == "PREPAID" && !isAdminMode.value && level >= 2 && !prepaidWarningShown) {
             prepaidWarningShown = true
             val pricier = overchargeNow() && overtimeRate > ratePerMinute
@@ -2330,6 +2342,8 @@ class KioskService : Service() {
         val ot = data.optDouble("overtime_rate_per_minute_kes", overtimeRate)
         overtimeRate = if (ot.isNaN() || ot <= 0) 0.0 else ot
         rushHour = data.optBoolean("rush_hour", rushHour)
+        billAmberKes = data.optDouble("bill_amber_kes", billAmberKes).let { if (it.isNaN() || it < 0) 0.0 else it }
+        billRedKes = data.optDouble("bill_red_kes", billRedKes).let { if (it.isNaN() || it < 0) 0.0 else it }
         val queue = data.optJSONObject("queue")
         val waiting = queue?.optInt("waiting_count", 0) ?: 0
         val previous = queueWaiting
@@ -2850,6 +2864,50 @@ class KioskService : Service() {
         return maxOf(minCharge, normal / 60.0 * ratePerMinute + q / 60.0 * effectiveOvertimeRate())
     }
 
+    /** Seconds of play the minimum charge covers (pay-after); 0 when there is no minimum. */
+    private fun minimumSeconds(): Int =
+        if (minCharge > 0 && ratePerMinute > 0) (minCharge / ratePerMinute * 60).toInt() else 0
+
+    /** Pay-after meter colour by amount owed: 1 amber, 2 red, 0 neither (or the amounts are off). */
+    private fun billLevel(): Int {
+        if (billingMode == "PREPAID") return 0
+        val owed = postpaidBill()
+        return when {
+            billRedKes > 0 && owed >= billRedKes -> 2
+            billAmberKes > 0 && owed >= billAmberKes -> 1
+            else -> 0
+        }
+    }
+
+    /** How far the pay-after bill has gone: 0 within the minimum, 1 past it, 2 amber, 3 red. */
+    private fun billStage(): Int {
+        if (billingMode == "PREPAID") return 0
+        return when (billLevel()) {
+            2 -> 3
+            1 -> 2
+            else -> if (minimumSeconds() > 0 && localSecondsElapsed > minimumSeconds()) 1 else 0
+        }
+    }
+
+    /**
+     * Pay-after: tell the player, once each, when the minimum time is used up and the bill starts
+     * growing, when it reaches the amber amount and when it reaches the red amount, so nobody is
+     * surprised at the counter.
+     */
+    private fun tellPlayerAboutBill() {
+        val stage = billStage()
+        if (stage <= billNoticeStage) return
+        billNoticeStage = stage
+        val owed = postpaidBill().toInt()
+        val rate = "KES ${formatRate(if (overchargeNow() && queuedOvertimeSecs > 0) effectiveOvertimeRate() else ratePerMinute)}/min"
+        when (stage) {
+            1 -> showNotice("Minimum time used (KES ${minCharge.toInt()})\nFrom now you pay $rate", 15_000)
+            2 -> showNotice("Your bill is KES $owed\nStill counting at $rate - pay the staff when you finish", 15_000)
+            3 -> showNotice("Your bill is now KES $owed\nStill counting at $rate - press BACK or ask the staff to stop", 20_000)
+        }
+        peekMeter(15_000)
+    }
+
     /**
      * Pay-after with players waiting: warn 5 minutes before the turn ends, and say so
      * when the overtime price starts. Each once per session.
@@ -2965,9 +3023,11 @@ class KioskService : Service() {
                             isOver -> "Overtime"
                             mode == "PREPAID" && level >= 1 -> "Time almost up"
                             mode == "PREPAID" -> "Time left"
-                            level >= 2 && overtimeRate > ratePerMinute -> "Overtime KES ${formatRate(overtimeRate)}/min"
-                            level >= 2 -> if (queueWaiting > 0) "Turn over, others waiting" else "Turn over, rush hour"
-                            level == 1 -> if (queueWaiting > 0) "Others waiting" else "Rush hour"
+                            level >= 2 && overchargeNow() && overtimeRate > ratePerMinute -> "Overtime KES ${formatRate(overtimeRate)}/min"
+                            level >= 2 && overchargeNow() -> if (queueWaiting > 0) "Turn over, others waiting" else "Turn over, rush hour"
+                            level >= 2 -> "Big bill - KES ${formatRate(ratePerMinute)}/min"
+                            level == 1 && overchargeNow() -> if (queueWaiting > 0) "Others waiting" else "Rush hour"
+                            level == 1 -> "Bill growing - KES ${formatRate(ratePerMinute)}/min"
                             else -> "Playing"
                         },
                         color = Color(0xFFCBD5E1),
