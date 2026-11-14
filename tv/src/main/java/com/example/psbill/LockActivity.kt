@@ -146,6 +146,10 @@ class LockActivity : ComponentActivity() {
     private var topupMessage by mutableStateOf<String?>(null)
     private var endedSessionLoserPay by mutableStateOf(false)
     private val endedSessionRounds = mutableStateListOf<JSONObject>()
+    private var endedSessionPlayerA by mutableStateOf("Player 1")
+    private var endedSessionPlayerB by mutableStateOf("Player 2")
+    private var endedSessionTotalA by mutableStateOf(0.0)
+    private var endedSessionTotalB by mutableStateOf(0.0)
     private var endedSessionStart by mutableStateOf("")
     private var endedSessionEnd by mutableStateOf("")
     private var endedSessionDurationMins by mutableStateOf(0)
@@ -336,14 +340,14 @@ class LockActivity : ComponentActivity() {
             val lp = json.optJSONObject("loser_pay_session")
             if (lp != null) {
                 endedSessionLoserPay = true
-                val roundsArr = lp.optJSONArray("rounds")
+                val games = loserPayGames(lp)
+                endedSessionPlayerA = lp.optCleanString("player_a", "Player 1").ifBlank { "Player 1" }
+                endedSessionPlayerB = lp.optCleanString("player_b", "Player 2").ifBlank { "Player 2" }
+                endedSessionTotalA = lp.optDouble("total_amount_player_a", 0.0)
+                endedSessionTotalB = lp.optDouble("total_amount_player_b", 0.0)
                 runOnUiThread {
                     endedSessionRounds.clear()
-                    if (roundsArr != null) {
-                        for (i in 0 until roundsArr.length()) {
-                            endedSessionRounds.add(roundsArr.getJSONObject(i))
-                        }
-                    }
+                    endedSessionRounds.addAll(games)
                 }
             } else {
                 endedSessionLoserPay = false
@@ -561,6 +565,10 @@ class LockActivity : ComponentActivity() {
                     endedSessionBillingMode = endedSessionBillingMode,
                     endedSessionLoserPay = endedSessionLoserPay,
                     endedSessionRounds = endedSessionRounds,
+                    endedSessionPlayerA = endedSessionPlayerA,
+                    endedSessionPlayerB = endedSessionPlayerB,
+                    endedSessionTotalA = endedSessionTotalA,
+                    endedSessionTotalB = endedSessionTotalB,
                     endedSessionStart = endedSessionStart,
                     endedSessionEnd = endedSessionEnd,
                     endedSessionDurationMins = endedSessionDurationMins,
@@ -859,6 +867,34 @@ class LockActivity : ComponentActivity() {
             gamesList.add(JSONObject().apply {
                 put("game_name", g)
             })
+        }
+    }
+
+    /**
+     * The match's games for the bill: the server's breakdown (who won, minutes, what each player
+     * pays), else built from the rounds of an older server (a draw split, open games left out).
+     */
+    private fun loserPayGames(lp: JSONObject): List<JSONObject> {
+        lp.optJSONObject("breakdown")?.optJSONArray("games")?.let { arr ->
+            return (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+        }
+        val a = lp.optString("player_a", ""); val b = lp.optString("player_b", "")
+        val rounds = lp.optJSONArray("rounds") ?: return emptyList()
+        return (0 until rounds.length()).mapNotNull { i ->
+            val r = rounds.optJSONObject(i) ?: return@mapNotNull null
+            if (r.optString("ended_at", "").let { it.isBlank() || it == "null" }) return@mapNotNull null
+            val amt = r.optDouble("amount_kes", 0.0)
+            val draw = r.optBoolean("is_draw", false)
+            if (draw && amt <= 0) return@mapNotNull null
+            val loser = r.optString("loser", "")
+            JSONObject().apply {
+                put("round_number", r.optInt("round_number"))
+                put("result", if (draw) "DRAW" else if (loser == a) "B" else "A")
+                put("minutes", 0)
+                put("amount_kes", amt)
+                put("amount_player_a", if (draw) amt / 2 else if (loser == a) amt else 0.0)
+                put("amount_player_b", if (draw) amt / 2 else if (loser == b) amt else 0.0)
+            }
         }
     }
 
@@ -1560,6 +1596,10 @@ fun LockScreenContent(
     endedSessionBillingMode: String,
     endedSessionLoserPay: Boolean,
     endedSessionRounds: List<JSONObject>,
+    endedSessionPlayerA: String = "Player 1",
+    endedSessionPlayerB: String = "Player 2",
+    endedSessionTotalA: Double = 0.0,
+    endedSessionTotalB: Double = 0.0,
     endedSessionStart: String,
     endedSessionEnd: String,
     endedSessionDurationMins: Int,
@@ -1740,56 +1780,64 @@ fun LockScreenContent(
                     // Divider
                     Box(Modifier.fillMaxWidth().height(1.dp).background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f)))
 
-                    // ── Loser Pay section ────────────────────────────────
+                    // ── Loser Pay section: every game, what player 1 (left) and player 2 (right) pay ──
                     if (endedSessionLoserPay && endedSessionRounds.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                text = "⚔  LOSER PAY BREAKDOWN",
+                                text = "LOSER PAY BREAKDOWN  -  loser pays the game, a draw is split",
                                 color = androidx.compose.ui.graphics.Color(0xFFFBBF24),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
                             )
-                            
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = 120.dp)
                                     .background(androidx.compose.ui.graphics.Color(0xFF1E293B), RoundedCornerShape(10.dp))
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Round", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1f))
-                                    Text("Winner", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(2f))
-                                    Text("Amount", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                Row(Modifier.fillMaxWidth()) {
+                                    Text("Game", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                    Text("Result", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1.6f))
+                                    Text("Cost", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1.1f))
+                                    Text(endedSessionPlayerA.take(10), color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1.2f))
+                                    Text(endedSessionPlayerB.take(10), color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1.2f))
                                 }
                                 Box(Modifier.fillMaxWidth().height(0.5.dp).background(androidx.compose.ui.graphics.Color.White.copy(0.1f)))
-                                
                                 LazyColumn(
                                     verticalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 130.dp)
                                 ) {
-                                    items(endedSessionRounds) { round ->
-                                        val isDraw = round.optBoolean("is_draw", false)
-                                        val winner = round.optString("winner", "?")
-                                        val amt = round.optDouble("amount_kes", 0.0)
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("Round ${round.optInt("round_number")}", color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                    items(endedSessionRounds) { g ->
+                                        val result = g.optString("result", "")
+                                        val isDraw = result == "DRAW"
+                                        val mins = g.optInt("minutes", 0)
+                                        val payA = g.optDouble("amount_player_a", 0.0)
+                                        val payB = g.optDouble("amount_player_b", 0.0)
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Text("${g.optInt("round_number")}  (${mins}m)", color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, modifier = Modifier.weight(1f))
                                             Text(
-                                                if (isDraw) "Draw" else winner,
+                                                when (result) {
+                                                    "A" -> "${endedSessionPlayerA.take(10)} won"
+                                                    "B" -> "${endedSessionPlayerB.take(10)} won"
+                                                    else -> "Draw - split"
+                                                },
                                                 color = if (isDraw) androidx.compose.ui.graphics.Color(0xFFFBBF24) else androidx.compose.ui.graphics.Color(0xFF00E676),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.weight(2f)
+                                                fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1.6f)
                                             )
-                                            Text("KES ${amt.toInt()}", color = androidx.compose.ui.graphics.Color(0xFFEF4444), fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                            Text("KES ${g.optDouble("amount_kes", 0.0).toInt()}", color = androidx.compose.ui.graphics.Color(0xFFCBD5E1), fontSize = 11.sp, modifier = Modifier.weight(1.1f))
+                                            Text(if (payA > 0) "KES ${payA.toInt()}" else "-", color = if (payA > 0) androidx.compose.ui.graphics.Color(0xFFEF4444) else androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 11.sp, modifier = Modifier.weight(1.2f))
+                                            Text(if (payB > 0) "KES ${payB.toInt()}" else "-", color = if (payB > 0) androidx.compose.ui.graphics.Color(0xFFEF4444) else androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 11.sp, modifier = Modifier.weight(1.2f))
                                         }
                                     }
+                                }
+                                Box(Modifier.fillMaxWidth().height(0.5.dp).background(androidx.compose.ui.graphics.Color.White.copy(0.1f)))
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("TO PAY", color = androidx.compose.ui.graphics.Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(3.7f))
+                                    Text("KES ${endedSessionTotalA.toInt()}", color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1.2f))
+                                    Text("KES ${endedSessionTotalB.toInt()}", color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1.2f))
                                 }
                             }
                         }

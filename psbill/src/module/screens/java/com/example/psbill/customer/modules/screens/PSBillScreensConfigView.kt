@@ -604,6 +604,7 @@ private fun ScreenDetail(
                             pill = if (paid) "PAID" else "UNPAID",
                             trailingValue = kes(s.optDouble("amount_charged_kes", 0.0)),
                         )
+                        s.optJSONObject("loser_pay")?.let { LoserPayBreakdown(it) }
                     }
                     if (pages > 1) {
                         item {
@@ -1126,4 +1127,44 @@ private fun PricingRulesDialog(
         },
         dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+
+/** Loser pay under a session: each game (who won, minutes, cost) and what player 1 and player 2 pay. */
+@Composable
+private fun LoserPayBreakdown(lp: JSONObject) {
+    val games = lp.optJSONArray("games") ?: return
+    if (games.length() == 0) return
+    val a = lp.optString("player_a").takeIf { it.isNotBlank() && it != "null" } ?: "Player 1"
+    val b = lp.optString("player_b").takeIf { it.isNotBlank() && it != "null" } ?: "Player 2"
+    PsSurface {
+        Text("LOSER PAYS - by game", color = PsTone.Warn, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Row(Modifier.fillMaxWidth()) {
+            Text("Game", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            Text("Result", color = PSBillThemeColors.TextSecondary, fontSize = 11.sp, modifier = Modifier.weight(1.5f))
+            Text(a.take(10), color = PSBillThemeColors.TextSecondary, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            Text(b.take(10), color = PSBillThemeColors.TextSecondary, fontSize = 11.sp, modifier = Modifier.weight(1f))
+        }
+        for (i in 0 until games.length()) {
+            val g = games.optJSONObject(i) ?: continue
+            val result = when (g.optString("result")) {
+                "A" -> "$a won"
+                "B" -> "$b won"
+                else -> "Draw - split"
+            }
+            val payA = g.optDouble("amount_player_a", 0.0)
+            val payB = g.optDouble("amount_player_b", 0.0)
+            Row(Modifier.fillMaxWidth()) {
+                Text("${g.optInt("round_number")} (${g.optInt("minutes")}m)", color = PSBillThemeColors.TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("$result, ${kes(g.optDouble("amount_kes", 0.0))}", color = PSBillThemeColors.TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
+                Text(if (payA > 0) kes(payA) else "-", color = if (payA > 0) PsTone.Warn else PSBillThemeColors.TextSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text(if (payB > 0) kes(payB) else "-", color = if (payB > 0) PsTone.Warn else PSBillThemeColors.TextSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            Text("To pay", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(2.5f))
+            Text(kes(lp.optDouble("total_amount_player_a", 0.0)), color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Text(kes(lp.optDouble("total_amount_player_b", 0.0)), color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        }
+    }
 }
