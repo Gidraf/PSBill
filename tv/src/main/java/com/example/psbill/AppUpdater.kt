@@ -119,6 +119,23 @@ object AppUpdater {
         }
     }
 
+    @Volatile private var nudgedCode = 0L
+
+    /**
+     * Every TV sync carries the newest build for this business (`app_latest {version_code}`):
+     * a newer one is fetched at once (not at the next 30-minute check) and installs by itself
+     * when the screen is locked and idle (LockActivity). Once per version.
+     */
+    fun onLatest(context: Context, latest: JSONObject?) {
+        val code = latest?.optLong("version_code") ?: return
+        val c = context.applicationContext
+        if (code <= installedVersionCode(c) || code == nudgedCode) return
+        if (_state.value.hint?.optLong("version_code") == code && (_state.value.ready || _state.value.downloading)) return
+        nudgedCode = code
+        Log.d(TAG, "Server has build $code: checking now")
+        checkNow(c)
+    }
+
     private fun handle(c: Context, r: okhttp3.Response, signedIn: Boolean) {
         if (!r.isSuccessful) return
         val json = runCatching { JSONObject(r.body?.string().orEmpty()) }.getOrNull() ?: return

@@ -1681,6 +1681,7 @@ class KioskService : Service() {
                             onLoserPaySync(data)
                             onTopupRequest(data)
                             BackupWifi.onSync(this@KioskService, data)
+                            AppUpdater.onLatest(this@KioskService, data.optJSONObject("app_latest"))
                             // Owner paused / is removing PSBill (RemoteControl): leave the screen alone
                             if (RemoteControl.onSync(this@KioskService, data, deviceId, apiBaseUrl(serverDomain),
                                     token, fingerprint)) {
