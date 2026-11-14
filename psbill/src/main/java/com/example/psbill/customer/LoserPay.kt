@@ -125,11 +125,12 @@ fun LoserPayMatchCard(
             }
             PsPill("GAME ${finished + 1}", PsTone.Busy)
         }
+        // Player 1 is always on the left, player 2 on the right (same as the TV pop-up)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlayerScore(a, winsA, owesA, Modifier.weight(1f))
-            PlayerScore(b, winsB, owesB, Modifier.weight(1f))
+            PlayerScore(a, winsA, draws, winsB, owesA, Modifier.weight(1f))
+            PlayerScore(b, winsB, draws, winsA, owesB, Modifier.weight(1f))
         }
-        if (draws > 0) Text("$draws draw${if (draws > 1) "s" else ""} (no charge)", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+        if (draws > 0) Text("$draws draw${if (draws > 1) "s" else ""} - each draw is split in half", color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
 
         Text("Who won this game?", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -148,7 +149,7 @@ fun LoserPayMatchCard(
             ) { Text("End match") }
         }
         Text(
-            "The loser of each game pays for that game's time. A draw costs nobody.",
+            "Each game costs the time played. The loser pays it; a draw is split in half.",
             color = PSBillThemeColors.TextSecondary, fontSize = 12.sp
         )
     }
@@ -167,7 +168,7 @@ fun LoserPayMatchCard(
 }
 
 @Composable
-private fun PlayerScore(name: String, wins: Int, owes: Double, modifier: Modifier) {
+private fun PlayerScore(name: String, wins: Int, draws: Int, losses: Int, owes: Double, modifier: Modifier) {
     Column(
         modifier
             .then(Modifier)
@@ -176,7 +177,7 @@ private fun PlayerScore(name: String, wins: Int, owes: Double, modifier: Modifie
     ) {
         PsStat(
             label = name,
-            value = "$wins won",
+            value = "W$wins  D$draws  L$losses",
             tone = PSBillThemeColors.TextPrimary,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -223,7 +224,12 @@ object LoserPayActions {
         }
         api.post("/api/v1/kiosk/loser-pay/round/${match.text("token")}", body) { code, text ->
             if (code in 200..299) {
-                api.toast(if (winner == null) "Draw recorded" else "$winner won - ${if (winner == a) b else a} pays this game")
+                val res = runCatching { JSONObject(text).optJSONObject("round") }.getOrNull()
+                val amt = res?.optDouble("amount_kes", 0.0) ?: 0.0
+                api.toast(
+                    if (winner == null) "Draw - each pays ${kes(amt / 2)}"
+                    else "$winner won - ${if (winner == a) b else a} pays ${kes(amt)}"
+                )
                 done(true)
             } else { api.toast(api.errorText(code, text, "Could not save the result")); done(false) }
         }

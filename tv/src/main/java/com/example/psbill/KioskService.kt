@@ -131,7 +131,14 @@ class KioskService : Service() {
     private var heartbeatJob: Job? = null
 
     // ── Loser Pay State ──────────────────────────────────────────────────────
-    private var isLoserPaySession = false
+    // Compose state: the meter re-draws (and stays on) when a loser-pay match starts or ends
+    private val loserPayActive = mutableStateOf(false)
+    private var isLoserPaySession: Boolean
+        get() = loserPayActive.value
+        set(v) { loserPayActive.value = v }
+    // When the current game (round) started, System.currentTimeMillis(); the meter counts from it
+    private val loserPayRoundStartMs = mutableStateOf(0L)
+    private var loserPaySyncSig = ""
     private var loserPayToken: String? = null
     private var loserPayPlayerA = mutableStateOf("Player A")
     private var loserPayPlayerB = mutableStateOf("Player B")
@@ -200,6 +207,10 @@ class KioskService : Service() {
     private var hdmiNumber = 1
     private var hdmiState = -1
     private var consoleOffSince = 0L
+    // The console went dark (off, standby, cable out) during this session: when it comes
+    // back the HDMI input is opened again, whatever is in front (the TV often leaves the
+    // input by itself when the cable is pulled, so there may be no cover to close).
+    private var consoleLostInSession = false
     private var hdmiCallback: android.media.tv.TvInputManager.TvInputCallback? = null
     private val hdmiWatchHandler = Handler(Looper.getMainLooper())
     private val hdmiWatchRunnable = object : Runnable {
@@ -267,6 +278,8 @@ class KioskService : Service() {
         // on the next reconnect (replaying it later could silently re-start a stopped session).
         private const val STALE_START_EVENT_TTL_MS = 15_000L
         private const val HDMI_POLL_MS = 5_000L
+        /** Loser pay: the game result pop-up stays this long, then fades. */
+        private const val RESULT_POPUP_MS = 6_000L
         // Console off this long during a session -> cover the HDMI input (the TV's own
         // no-signal countdown is much longer, so a quick console restart is not covered).
         private const val CONSOLE_OFF_GRACE_MS = 20_000L
@@ -1142,6 +1155,10 @@ class KioskService : Service() {
                         childSessionLogs.clear()
                         childSessionRound.value = 1
                         childSessionStartTime = System.currentTimeMillis()
+                        loserPayRoundStartMs.value = childSessionStartTime
+                        loserPaySyncSig = ""
+                        // Continue after a pause: keep the score and totals so far
+                        if (data.optBoolean("resumed", false)) applyLoserPayState(data, resetClock = true)
                         
                         deviceStatus = status
                         
@@ -1204,8 +1221,14 @@ class KioskService : Service() {
                             else -> { loserPayScoreA.add('?'); loserPayScoreB.add('?') }
                         }
 
-                        // Track who owes money
-                        if (!isDraw && loser.isNotEmpty()) {
+                        // Track who owes money: the loser pays the game, a draw is split in half
+                        if (data.has("total_amount_player_a") && data.has("total_amount_player_b")) {
+                            loserPayAmountA.value = data.optDouble("total_amount_player_a", loserPayAmountA.value)
+                            loserPayAmountB.value = data.optDouble("total_amount_player_b", loserPayAmountB.value)
+                        } else if (isDraw) {
+                            loserPayAmountA.value += data.optDouble("amount_player_a", amount / 2)
+                            loserPayAmountB.value += data.optDouble("amount_player_b", amount / 2)
+                        } else if (loser.isNotEmpty()) {
                             if (loser == pA) loserPayAmountA.value += amount
                             else loserPayAmountB.value += amount
                         }
@@ -1213,11 +1236,13 @@ class KioskService : Service() {
                         // Advance to next round
                         childSessionRound.value = roundNo + 1
                         childSessionStartTime = System.currentTimeMillis()
+                        loserPayRoundStartMs.value = childSessionStartTime
+                        loserPaySyncSig = ""
 
                         Log.d(TAG, "[LoserPay] Round $roundNo done. ${if(isDraw) "DRAW" else "$winner wins"}. Amount KES $amount")
 
                         // Brief sports-ticker popup showing result
-                        showRoundResultPopup(winner, loser, isDraw, amount, roundNo)
+                        showRoundResultPopup(data, roundNo)
                     }
                 }
 
@@ -1235,14 +1260,116 @@ class KioskService : Service() {
         }
     }
 
-    // Brief sports-ticker style popup that auto-dismisses after 4 seconds
-    @RequiresApi(Build.VERSION_CODES.M)
-    private fun showRoundResultPopup(winner: String, loser: String, isDraw: Boolean, amount: Double, round: Int) {
-        if (!Settings.canDrawOverlays(this)) return
+    // ── Loser pay: result pop-up + state from the sync ─────────────────────────
 
-        var popupView: ComposeView? = null
+    /** Won / drawn / lost of player A (left) and B (right) from the local score lists. */
+    private fun localStats(): Pair<IntArray, IntArray> {
+        fun count(l: List<Char>) = intArrayOf(l.count { it == 'W' }, l.count { it == 'D' }, l.count { it == 'L' })
+        return count(loserPayScoreA.toList()) to count(loserPayScoreB.toList())
+    }
+
+    /** "2021-11-14T10:00:00.123456" (UTC, no zone) -> epoch ms, 0 when unreadable. */
+    private fun parseUtcMs(raw: String): Long {
+        return try {
+            var t = raw.trim().removeSuffix("Z")
+            val plus = t.indexOf('+', 10)
+            if (plus > 0) t = t.substring(0, plus)
+            val dot = t.indexOf('.')
+            if (dot > 0) t = t.substring(0, minOf(t.length, dot + 4)).padEnd(dot + 4, '0')
+            val fmt = java.text.SimpleDateFormat(
+                if (dot > 0) "yyyy-MM-dd'T'HH:mm:ss.SSS" else "yyyy-MM-dd'T'HH:mm:ss", Locale.US
+            ).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+            fmt.parse(t)?.time ?: 0L
+        } catch (_: Exception) { 0L }
+    }
+
+    /**
+     * Rebuild the match (players, W/D/L per side, totals, current game) from the server's
+     * loser_pay_session (sync) or a resumed loser_pay_started event. Keeps the TV in step
+     * after a restart, a missed event or a Continue.
+     */
+    private fun applyLoserPayState(lp: JSONObject, resetClock: Boolean = false) {
+        val a = lp.optString("player_a", loserPayPlayerA.value).ifBlank { "Player 1" }
+        val b = lp.optString("player_b", loserPayPlayerB.value).ifBlank { "Player 2" }
+        val rounds = lp.optJSONArray("rounds") ?: JSONArray()
+        val scoreA = mutableListOf<Char>(); val scoreB = mutableListOf<Char>()
+        var openRound: JSONObject? = null
+        for (i in 0 until rounds.length()) {
+            val r = rounds.optJSONObject(i) ?: continue
+            val ended = r.optString("ended_at", "").let { it.isNotBlank() && it != "null" }
+            if (!ended) { openRound = r; continue }
+            val winner = r.optString("winner", "")
+            val loser = r.optString("loser", "")
+            when {
+                // an unfinished game that cost nothing (end of a session) is not a played draw
+                r.optBoolean("is_draw", false) -> if (r.optDouble("amount_kes", 0.0) > 0) { scoreA.add('D'); scoreB.add('D') }
+                winner == a || loser == b -> { scoreA.add('W'); scoreB.add('L') }
+                winner == b || loser == a -> { scoreA.add('L'); scoreB.add('W') }
+            }
+        }
+        val totalA = lp.optDouble("total_amount_player_a", loserPayAmountA.value)
+        val totalB = lp.optDouble("total_amount_player_b", loserPayAmountB.value)
+        val roundNo = openRound?.optInt("round_number", scoreA.size + 1) ?: (scoreA.size + 1)
+        val sig = "$a|$b|${scoreA.joinToString("")}|$roundNo|$totalA|$totalB"
+        isLoserPaySession = true
+        lp.optString("token", "").takeIf { it.isNotBlank() && it != "null" }?.let { loserPayToken = it }
+        if (sig == loserPaySyncSig) return
+        loserPaySyncSig = sig
+        loserPayPlayerA.value = a
+        loserPayPlayerB.value = b
+        if (loserPayScoreA.toList() != scoreA) { loserPayScoreA.clear(); loserPayScoreA.addAll(scoreA) }
+        if (loserPayScoreB.toList() != scoreB) { loserPayScoreB.clear(); loserPayScoreB.addAll(scoreB) }
+        loserPayAmountA.value = totalA
+        loserPayAmountB.value = totalB
+        val newRound = roundNo != childSessionRound.value
+        childSessionRound.value = roundNo
+        if (resetClock) {
+            loserPayRoundStartMs.value = System.currentTimeMillis()
+        } else if (newRound || loserPayRoundStartMs.value == 0L) {
+            // the server's start time; the event path (round_result) sets the TV's own clock instead
+            val started = openRound?.let { parseUtcMs(it.optString("started_at", "")) } ?: 0L
+            loserPayRoundStartMs.value = if (started in 1..System.currentTimeMillis()) started else System.currentTimeMillis()
+        }
+        childSessionStartTime = loserPayRoundStartMs.value
+    }
+
+    /** Every sync carries the screen's latest loser-pay match: follow it while it is live. */
+    private fun onLoserPaySync(data: JSONObject) {
+        val lp = data.optJSONObject("loser_pay_session") ?: return
+        if (lp.optString("status", "") != "ACTIVE" || !isLiveSession(data)) return
+        try { applyLoserPayState(lp) } catch (e: Exception) { Log.w(TAG, "[LoserPay] sync: ${e.message}") }
+    }
+
+    /**
+     * Result of a game: player 1 always on the LEFT, player 2 on the RIGHT. The winner's side
+     * lights up, each side shows its won / drawn / lost and what it owes, then it all fades.
+     */
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun showRoundResultPopup(data: JSONObject, round: Int) {
+        if (!Settings.canDrawOverlays(this)) return
+        val a = loserPayPlayerA.value
+        val b = loserPayPlayerB.value
+        val isDraw = data.optBoolean("is_draw", false)
+        val amount = data.optDouble("amount_kes", 0.0)
+        val winner = data.optString("winner", "")
+        val loser = data.optString("loser", "")
+        val winnerSide = data.optString("winner_side", "").ifBlank {
+            when { winner == a || loser == b -> "A"; winner == b || loser == a -> "B"; else -> "" }
+        }
+        val local = localStats()
+        val st = data.optJSONObject("stats")
+        fun side(key: String, fallback: IntArray): IntArray = st?.optJSONObject(key)?.let {
+            intArrayOf(it.optInt("won"), it.optInt("drawn"), it.optInt("lost"))
+        } ?: fallback
+        val statsA = side("A", local.first)
+        val statsB = side("B", local.second)
+        val payA = if (isDraw) data.optDouble("amount_player_a", amount / 2) else if (winnerSide == "B") amount else 0.0
+        val payB = if (isDraw) data.optDouble("amount_player_b", amount / 2) else if (winnerSide == "A") amount else 0.0
+        val totalA = loserPayAmountA.value
+        val totalB = loserPayAmountB.value
+
         val popupParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -1253,46 +1380,31 @@ class KioskService : Service() {
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            y = 60
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = 40
         }
 
-        popupView = ComposeView(this).apply {
+        val popupView = ComposeView(this).apply {
             setContent {
-                val visible = remember { mutableStateOf(true) }
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = visible.value,
-                    enter = androidx.compose.animation.slideInVertically { it } +
-                            androidx.compose.animation.fadeIn(),
-                    exit  = androidx.compose.animation.slideOutVertically { it } +
-                            androidx.compose.animation.fadeOut()
-                ) {
+                var shown by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    shown = true
+                    delay(RESULT_POPUP_MS)
+                    shown = false
+                }
+                AnimatedVisibility(visible = shown, enter = fadeIn(tween(500)), exit = fadeOut(tween(1200))) {
                     Row(
-                        modifier = Modifier
-                            .background(
-                                brush = Brush.horizontalGradient(
-                                    if (isDraw) listOf(Color(0xFF78350F), Color(0xFFB45309))
-                                    else listOf(Color(0xFF14532D), Color(0xFF15803D))
-                                ),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .border(1.dp, Color.White.copy(0.2f), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        Modifier.fillMaxWidth().padding(horizontal = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Text("R$round", color = Color(0xFFFBBF24), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Box(Modifier.width(1.dp).height(24.dp).background(Color.White.copy(0.25f)))
-                        Text(
-                            text = if (isDraw) "⚖ DRAW" else "🏆 $winner WINS",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        if (!isDraw && amount > 0) {
-                            Box(Modifier.width(1.dp).height(24.dp).background(Color.White.copy(0.25f)))
-                            Text("$loser pays KES ${amount.toInt()}", color = Color(0xFFFCA5A5), fontSize = 11.sp)
+                        ResultSide(a, "PLAYER 1", isDraw, winnerSide == "A", statsA, payA, totalA, Modifier.weight(1f))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("GAME $round", color = Color(0xFFFBBF24), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(if (isDraw) "DRAW" else "VS", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                            if (isDraw) Text("split", color = Color(0xFFFDE68A), fontSize = 11.sp)
                         }
+                        ResultSide(b, "PLAYER 2", isDraw, winnerSide == "B", statsB, payB, totalB, Modifier.weight(1f))
                     }
                 }
             }
@@ -1305,12 +1417,63 @@ class KioskService : Service() {
 
         try {
             windowManager?.addView(popupView, popupParams)
-            // Auto-dismiss after 4 seconds
+            // gone once the fade-out is over
             Handler(Looper.getMainLooper()).postDelayed({
-                try { windowManager?.removeView(popupView) } catch (e: Exception) {}
-            }, 4000)
+                try { windowManager?.removeView(popupView) } catch (_: Exception) {}
+            }, RESULT_POPUP_MS + 1_600L)
         } catch (e: Exception) {
             Log.e(TAG, "Could not show round result popup: ${e.message}")
+        }
+    }
+
+    @Composable
+    private fun ResultSide(
+        name: String, label: String, isDraw: Boolean, won: Boolean, stats: IntArray,
+        pays: Double, total: Double, modifier: Modifier,
+    ) {
+        val colors = when {
+            isDraw -> listOf(Color(0xFF78350F), Color(0xFFB45309))
+            won -> listOf(Color(0xFF14532D), Color(0xFF16A34A))
+            else -> listOf(Color(0xFF3F1D1D), Color(0xFF7F1D1D))
+        }
+        val headline = when {
+            isDraw -> "DRAW"
+            won -> "WINNER"
+            else -> "LOST"
+        }
+        Column(
+            modifier
+                .background(Brush.horizontalGradient(colors), RoundedCornerShape(14.dp))
+                .border(if (won) 2.dp else 1.dp, if (won) Color(0xFFFBBF24) else Color.White.copy(0.2f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(label, color = Color.White.copy(0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text(name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            Text(headline, color = if (won) Color(0xFFFDE68A) else Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                StatCell("WON", stats[0], Color(0xFF86EFAC))
+                StatCell("DRAWN", stats[1], Color(0xFFFDE68A))
+                StatCell("LOST", stats[2], Color(0xFFFCA5A5))
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                when {
+                    pays > 0 -> "Pays KES ${pays.toInt()} for this game"
+                    else -> "Pays nothing for this game"
+                },
+                color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+            )
+            Text("Total so far: KES ${total.toInt()}", color = Color.White.copy(0.8f), fontSize = 11.sp)
+        }
+    }
+
+    @Composable
+    private fun StatCell(label: String, value: Int, color: Color) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$value", color = color, fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Text(label, color = Color.White.copy(0.7f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
 
@@ -1490,6 +1653,7 @@ class KioskService : Service() {
                             val oldStatus = deviceStatus
                             cacheDeviceState(data)
                             onQueueInfo(data)
+                            onLoserPaySync(data)
                             onTopupRequest(data)
                             BackupWifi.onSync(this@KioskService, data)
                             // Owner paused / is removing PSBill (RemoteControl): leave the screen alone
@@ -1586,6 +1750,8 @@ class KioskService : Service() {
         loserPayAmountB.value = 0.0
         childSessionRound.value = 0
         childSessionLogs.clear()
+        loserPayRoundStartMs.value = 0L
+        loserPaySyncSig = ""
     }
 
     private fun launchLockScreen(invoiceJson: JSONObject?) {
@@ -1696,14 +1862,23 @@ class KioskService : Service() {
         prefs.edit().putBoolean("hdmi_connected", isConnected).apply()
     }
 
-    /** The id of HDMI input #number (1-based), else the first HDMI input; null without TV inputs. */
+    /**
+     * The id of HDMI input #number (1-based), else the first HDMI input; null without TV inputs.
+     * Only the TV's own HDMI ports count: a console with HDMI-CEC adds a child input (parentId =
+     * the port) that exists only while the console is plugged in and on. Counting those moved
+     * the numbering, and a saved child id was gone after the cable came out, so the console was
+     * never seen coming back (the HDMI input was not picked up again).
+     */
     private fun resolveHdmiInputId(number: Int): String? {
         return try {
             val tim = getSystemService(Context.TV_INPUT_SERVICE) as? android.media.tv.TvInputManager ?: return null
-            val hdmi = tim.tvInputList.filter {
+            val all = tim.tvInputList.filter {
                 it.type == android.media.tv.TvInputInfo.TYPE_HDMI || it.id.contains("hdmi", ignoreCase = true)
             }
-            (hdmi.getOrNull(number - 1) ?: hdmi.firstOrNull())?.id
+            val ports = all.filter { it.parentId == null }
+            val hdmi = ports.ifEmpty { all }
+            val pick = hdmi.getOrNull(number - 1) ?: hdmi.firstOrNull()
+            (pick?.parentId ?: pick?.id)
         } catch (e: Exception) {
             Log.w(TAG, "TV inputs unavailable: ${e.message}")
             null
@@ -1759,8 +1934,14 @@ class KioskService : Service() {
         if (hdmiCallback == null) {
             val cb = object : android.media.tv.TvInputManager.TvInputCallback() {
                 override fun onInputStateChanged(inputId: String, state: Int) {
-                    if (inputId == (hdmiInputId ?: return)) onConsoleState(state)
+                    val port = hdmiInputId ?: return
+                    if (inputId == port) onConsoleState(state)
+                    else if (parentOf(inputId) == port) checkConsole()  // the console's CEC input
                 }
+                // A console with CEC appears / disappears as its own input when plugged / unplugged
+                override fun onInputAdded(inputId: String) { checkConsole() }
+                override fun onInputRemoved(inputId: String) { checkConsole() }
+                override fun onInputUpdated(inputId: String) { checkConsole() }
             }
             try {
                 tim.registerCallback(cb, hdmiWatchHandler)
@@ -1782,9 +1963,25 @@ class KioskService : Service() {
         hdmiCallback = null
     }
 
+    private fun parentOf(inputId: String): String? = try {
+        (getSystemService(Context.TV_INPUT_SERVICE) as? android.media.tv.TvInputManager)
+            ?.getTvInputInfo(inputId)?.parentId
+    } catch (_: Exception) { null }
+
     private fun checkConsole() {
         val tim = getSystemService(Context.TV_INPUT_SERVICE) as? android.media.tv.TvInputManager ?: return
-        val id = hdmiInputId ?: resolveHdmiInputId(hdmiNumber)?.also { hdmiInputId = it } ?: return
+        var id = hdmiInputId
+        // A saved id that is gone (an old CEC child input) or is a child: find the port again
+        val info = id?.let { try { tim.getTvInputInfo(it) } catch (_: Exception) { null } }
+        if (id == null || info == null || info.parentId != null) {
+            id = resolveHdmiInputId(hdmiNumber) ?: return
+            if (id != hdmiInputId) {
+                Log.d(TAG, "HDMI input is now $id (was $hdmiInputId)")
+                hdmiInputId = id
+                getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE).edit()
+                    .putString(ConsoleOffActivity.KEY_INPUT_ID, id).apply()
+            }
+        }
         val state = try { tim.getInputState(id) } catch (e: Exception) { return }
         onConsoleState(state)
     }
@@ -1805,30 +2002,40 @@ class KioskService : Service() {
             if (on != localHdmiConnected) updateLocalHdmiConnected(on)
         }
         val inSession = sessionOnScreen()
+        val canSwitch = inSession && !isSleeping && !RemoteControl.isPaused(this)
         if (state == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED) {
             consoleOffSince = 0L
-            if (ConsoleOffActivity.isOpen()) {
-                val wasInFront = ConsoleOffActivity.isResumedNow
-                ConsoleOffActivity.close()
-                // Back to the game, unless the TV already switched (the console's one-touch play)
-                if (wasInFront && inSession && !isSleeping) launchHdmiInput(hdmiNumber)
+            val coverOpen = ConsoleOffActivity.isOpen()
+            val wasInFront = coverOpen && ConsoleOffActivity.isResumedNow
+            if (coverOpen) ConsoleOffActivity.close()
+            // The console is back after going dark in this session: open the HDMI input again.
+            // Before, this only happened when our cover page was in front, so after the cable
+            // was pulled (the TV leaves the input by itself) or a quick console restart (no
+            // cover yet) the TV stayed on its home / no-signal screen.
+            val back = consoleLostInSession && previous != state
+            consoleLostInSession = false
+            if (canSwitch && (wasInFront || back)) {
+                Log.d(TAG, "Console back: opening HDMI input #$hdmiNumber")
+                launchHdmiInput(hdmiNumber)
             }
             return
         }
-        // Cable plugged back in: many TVs only see the picture once the input is open, so
-        // open it now instead of waiting for OK (the cover comes back if it stays dark).
-        if (previous == android.media.tv.TvInputManager.INPUT_STATE_DISCONNECTED && inSession && !isSleeping &&
-            ConsoleOffActivity.isOpen()) {
+        if (inSession && previous >= 0) consoleLostInSession = true
+        // Cable plugged back in (console still waking): many TVs only see the picture once the
+        // input is open, so open it now instead of waiting for OK (the cover comes back if it
+        // stays dark).
+        if (previous == android.media.tv.TvInputManager.INPUT_STATE_DISCONNECTED && canSwitch) {
             Log.d(TAG, "HDMI cable back: opening the input")
             getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE).edit()
                 .putLong(ConsoleOffActivity.KEY_SNOOZE_UNTIL, System.currentTimeMillis() + ConsoleOffActivity.SNOOZE_MS)
                 .apply()
             consoleOffSince = 0L
-            ConsoleOffActivity.close()
+            if (ConsoleOffActivity.isOpen()) ConsoleOffActivity.close()
             launchHdmiInput(hdmiNumber)
             return
         }
         if (!inSession) {
+            consoleLostInSession = false
             consoleOffSince = 0L
             // the session ended: the lock screen is in front, drop the page behind it
             if (ConsoleOffActivity.isOpen() && !ConsoleOffActivity.isResumedNow) ConsoleOffActivity.close()
@@ -2026,7 +2233,8 @@ class KioskService : Service() {
         }
         if (mode == "PREPAID" && level == 0) prepaidWarningShown = false  // topped up
         meterVisible.value = level > 0 || secsElapsed < 20 || (secsElapsed % 300) < 10 ||
-            android.os.SystemClock.elapsedRealtime() < meterPeekUntil
+            android.os.SystemClock.elapsedRealtime() < meterPeekUntil ||
+            isLoserPaySession   // loser pay: the meter stays on so both players see the game's cost
     }
 
     /** Queue info from the 2-second sync: pop up a short notice when someone joins. */
@@ -2366,19 +2574,39 @@ class KioskService : Service() {
         }
     }
 
+    /**
+     * Loser pay under the meter: this game's clock and cost (loser pays it, a draw is split),
+     * then player 1 (left) and player 2 (right) with won-drawn-lost and what each owes so far.
+     */
     @Composable
     private fun LoserPayTally() {
-        val scoreA = loserPayScoreA.toList()
-        val scoreB = loserPayScoreB.toList()
+        val (sa, sb) = localStats()
         val round = childSessionRound.value
-        if (scoreA.isEmpty() && scoreB.isEmpty() && round <= 0) return
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(loserPayPlayerA.value.take(6), color = Color(0xFFCBD5E1), fontSize = 9.sp)
-            scoreA.forEach { r -> Text(r.toString(), color = tallyColor(r), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold) }
-            Text("|", color = Color(0x80FFFFFF), fontSize = 9.sp)
-            Text(loserPayPlayerB.value.take(6), color = Color(0xFFCBD5E1), fontSize = 9.sp)
-            scoreB.forEach { r -> Text(r.toString(), color = tallyColor(r), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold) }
-            if (round > 0) Text("R$round", color = Color(0xFFFBBF24), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        val start = loserPayRoundStartMs.value
+        val now by androidx.compose.runtime.produceState(System.currentTimeMillis(), start) {
+            while (true) { value = System.currentTimeMillis(); delay(1_000) }
+        }
+        val secs = if (start > 0) ((now - start) / 1000).coerceAtLeast(0) else 0L
+        val cost = maxOf(minCharge, secs / 60.0 * ratePerMinute)
+        Column(horizontalAlignment = Alignment.End) {
+            if (round > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("GAME $round", color = Color(0xFFFBBF24), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format(Locale.US, "%02d:%02d", secs / 60, secs % 60), color = Color.White,
+                        fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("KES ${cost.toInt()}", color = Color(0xFFE2E8F0), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(loserPayPlayerA.value.take(8), color = Color(0xFFCBD5E1), fontSize = 9.sp)
+                Text("${sa[0]}-${sa[1]}-${sa[2]}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                Text("KES ${loserPayAmountA.value.toInt()}", color = Color(0xFFFCA5A5), fontSize = 9.sp)
+                Text("|", color = Color(0x80FFFFFF), fontSize = 9.sp)
+                Text(loserPayPlayerB.value.take(8), color = Color(0xFFCBD5E1), fontSize = 9.sp)
+                Text("${sb[0]}-${sb[1]}-${sb[2]}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                Text("KES ${loserPayAmountB.value.toInt()}", color = Color(0xFFFCA5A5), fontSize = 9.sp)
+            }
+            Text("W-D-L  |  loser pays, draw split", color = Color(0xFF94A3B8), fontSize = 8.sp)
         }
     }
 
