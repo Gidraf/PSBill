@@ -11,3 +11,4 @@ int style Base_Theme_PSBill 0x0
 int style Theme_PSBill 0x0
 int xml backup_rules 0x0
 int xml data_extraction_rules 0x0
+int xml file_paths 0x0

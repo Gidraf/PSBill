@@ -12,3 +12,4 @@ style Base_Theme_PSBill
 style Theme_PSBill
 xml backup_rules
 xml data_extraction_rules
+xml file_paths

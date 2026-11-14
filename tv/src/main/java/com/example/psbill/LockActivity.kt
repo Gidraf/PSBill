@@ -1836,7 +1836,7 @@ fun LockScreenContent(
                                 fontWeight = FontWeight.ExtraBold
                             )
                             Text(
-                                text = "${endedSessionDurationMins} mins • ${endedSessionBillingMode}",
+                                text = "${if (endedSessionLoserPay && endedSessionRounds.isNotEmpty()) maxOf(1, endedSessionRounds.sumOf { it.optInt("minutes", 0) }) else endedSessionDurationMins} mins • ${endedSessionBillingMode}",
                                 color = androidx.compose.ui.graphics.Color(0xFF64748B),
                                 fontSize = 11.sp
                             )
