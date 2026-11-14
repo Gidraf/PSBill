@@ -40,6 +40,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -658,7 +660,7 @@ class LockActivity : ComponentActivity() {
                     )
                 }
 
-                if (showInvoiceDialog) {
+                if (showInvoiceDialog && !endedSessionLoserPay) {
                     SessionSummaryDialog(
                         amount = if (invoiceAmount > 0) invoiceAmount else endedSessionAmount,
                         duration = invoiceDuration,
@@ -1774,16 +1776,21 @@ fun LockScreenContent(
                 var isButtonFocused by remember { mutableStateOf(false) }
 
                 LaunchedEffect(Unit) {
-                    focusRequester.requestFocus()
+                    runCatching { focusRequester.requestFocus() }
                 }
 
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth(0.72f)
+                        .weight(1f, fill = false)
+                        .padding(vertical = 10.dp)
+                        .fillMaxWidth(if (endedSessionLoserPay) 0.86f else 0.72f)
                         .background(androidx.compose.ui.graphics.Color(0xFF0F172A), RoundedCornerShape(20.dp))
                         .border(1.5.dp, androidx.compose.ui.graphics.Color(0xFF00E676).copy(alpha = 0.4f), RoundedCornerShape(20.dp))
-                        .padding(28.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                        .focusRequester(focusRequester)
+                        .focusable()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 28.dp, vertical = 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     // ── Header ──────────────────────────────────────────
                     Row(
@@ -1823,7 +1830,7 @@ fun LockScreenContent(
                                 letterSpacing = 1.sp
                             )
                             Text(
-                                text = "KES ${endedSessionAmount.toInt()}",
+                                text = "KES ${(if (endedSessionLoserPay && endedSessionTotalA + endedSessionTotalB > 0) endedSessionTotalA + endedSessionTotalB else endedSessionAmount).toInt()}",
                                 color = androidx.compose.ui.graphics.Color(0xFF00E676),
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.ExtraBold
@@ -1840,66 +1847,14 @@ fun LockScreenContent(
                     Box(Modifier.fillMaxWidth().height(1.dp).background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f)))
 
                     // ── Loser Pay section: every game, what player 1 (left) and player 2 (right) pay ──
-                    if (endedSessionLoserPay && endedSessionRounds.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(
-                                text = "LOSER PAY BREAKDOWN  -  loser pays the game, a draw is split",
-                                color = androidx.compose.ui.graphics.Color(0xFFFBBF24),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            )
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(androidx.compose.ui.graphics.Color(0xFF1E293B), RoundedCornerShape(10.dp))
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Row(Modifier.fillMaxWidth()) {
-                                    Text("Game", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1f))
-                                    Text("Result", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1.6f))
-                                    Text("Cost", color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1.1f))
-                                    Text(endedSessionPlayerA.take(10), color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1.2f))
-                                    Text(endedSessionPlayerB.take(10), color = androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 10.sp, modifier = Modifier.weight(1.2f))
-                                }
-                                Box(Modifier.fillMaxWidth().height(0.5.dp).background(androidx.compose.ui.graphics.Color.White.copy(0.1f)))
-                                LazyColumn(
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.fillMaxWidth().heightIn(max = 130.dp)
-                                ) {
-                                    items(endedSessionRounds) { g ->
-                                        val result = g.optString("result", "")
-                                        val isDraw = result == "DRAW"
-                                        val mins = g.optInt("minutes", 0)
-                                        val payA = g.optDouble("amount_player_a", 0.0)
-                                        val payB = g.optDouble("amount_player_b", 0.0)
-                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Text("${g.optInt("round_number")}  (${mins}m)", color = androidx.compose.ui.graphics.Color.White, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                                            Text(
-                                                when (result) {
-                                                    "A" -> "${endedSessionPlayerA.take(10)} won"
-                                                    "B" -> "${endedSessionPlayerB.take(10)} won"
-                                                    else -> "Draw - split"
-                                                },
-                                                color = if (isDraw) androidx.compose.ui.graphics.Color(0xFFFBBF24) else androidx.compose.ui.graphics.Color(0xFF00E676),
-                                                fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.weight(1.6f)
-                                            )
-                                            Text("KES ${g.optDouble("amount_kes", 0.0).toInt()}", color = androidx.compose.ui.graphics.Color(0xFFCBD5E1), fontSize = 11.sp, modifier = Modifier.weight(1.1f))
-                                            Text(if (payA > 0) "KES ${payA.toInt()}" else "-", color = if (payA > 0) androidx.compose.ui.graphics.Color(0xFFEF4444) else androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 11.sp, modifier = Modifier.weight(1.2f))
-                                            Text(if (payB > 0) "KES ${payB.toInt()}" else "-", color = if (payB > 0) androidx.compose.ui.graphics.Color(0xFFEF4444) else androidx.compose.ui.graphics.Color(0xFF64748B), fontSize = 11.sp, modifier = Modifier.weight(1.2f))
-                                        }
-                                    }
-                                }
-                                Box(Modifier.fillMaxWidth().height(0.5.dp).background(androidx.compose.ui.graphics.Color.White.copy(0.1f)))
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("TO PAY", color = androidx.compose.ui.graphics.Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(3.7f))
-                                    Text("KES ${endedSessionTotalA.toInt()}", color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1.2f))
-                                    Text("KES ${endedSessionTotalB.toInt()}", color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1.2f))
-                                }
-                            }
-                        }
+                    if (endedSessionLoserPay) {
+                        LoserPayBill(
+                            playerA = endedSessionPlayerA,
+                            playerB = endedSessionPlayerB,
+                            totalA = endedSessionTotalA,
+                            totalB = endedSessionTotalB,
+                            games = endedSessionRounds,
+                        )
                     } else {
                         // Regular session — show single session row
                         Row(
@@ -1920,6 +1875,15 @@ fun LockScreenContent(
                             }
                         }
                     }
+                    if (endedSessionLoserPay) {
+                        Text(
+                            "Pay the attendant. The screen opens when they confirm the payment.",
+                            color = androidx.compose.ui.graphics.Color(0xFFFBBF24),
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
 
                 }
             } else {
@@ -1933,6 +1897,95 @@ fun LockScreenContent(
             }
 
             LockFooter(macAddress = macAddress, ipAddress = ipAddress, linkCode = linkCode)
+        }
+    }
+}
+
+/**
+ * The bill of a loser-pay match on the lock screen: what player 1 (left) and player 2 (right) each pay,
+ * in big type, then every game (minutes, who won, its cost, each player's share). The loser pays a
+ * game; a draw is split. Nothing covers it (no "amount due" pop-up for a match).
+ */
+@Composable
+private fun LoserPayBill(playerA: String, playerB: String, totalA: Double, totalB: Double, games: List<JSONObject>) {
+    val muted = androidx.compose.ui.graphics.Color(0xFF94A3B8)
+    val red = androidx.compose.ui.graphics.Color(0xFFF87171)
+    val green = androidx.compose.ui.graphics.Color(0xFF00E676)
+    val amber = androidx.compose.ui.graphics.Color(0xFFFBBF24)
+    val panel = androidx.compose.ui.graphics.Color(0xFF1E293B)
+    fun kes(v: Double) = "KES " + (if (v % 1.0 == 0.0) v.toInt().toString() else String.format(Locale.US, "%.1f", v))
+    val wonA = games.count { it.optString("result") == "A" }
+    val wonB = games.count { it.optString("result") == "B" }
+    val draws = games.count { it.optString("result") == "DRAW" }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("LOSER PAY  -  the loser pays each game, a draw is split",
+            color = amber, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf(Triple(playerA, totalA, "Left  -  won $wonA, lost $wonB" + if (draws > 0) ", drew $draws" else ""),
+                   Triple(playerB, totalB, "Right  -  won $wonB, lost $wonA" + if (draws > 0) ", drew $draws" else "")).forEach { (name, owed, rec) ->
+                Column(
+                    Modifier.weight(1f)
+                        .background(if (owed > 0) red.copy(alpha = 0.12f) else green.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
+                        .border(1.dp, if (owed > 0) red.copy(alpha = 0.5f) else green.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Text(name.ifBlank { "Player" }, color = androidx.compose.ui.graphics.Color.White, fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(rec, color = muted, fontSize = 12.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(if (owed > 0) "PAYS" else "PAYS NOTHING", color = muted, fontSize = 11.sp, letterSpacing = 1.sp)
+                    Text(kes(owed), color = if (owed > 0) red else green, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+
+        if (games.isEmpty()) {
+            Text("No game was finished, so there is nothing to pay for the match.", color = muted, fontSize = 13.sp)
+        } else {
+            Column(
+                Modifier.fillMaxWidth().background(panel, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(Modifier.fillMaxWidth()) {
+                    Text("Game", color = muted, fontSize = 12.sp, modifier = Modifier.weight(1.1f))
+                    Text("Result", color = muted, fontSize = 12.sp, modifier = Modifier.weight(1.8f))
+                    Text("Cost", color = muted, fontSize = 12.sp, modifier = Modifier.weight(1.1f))
+                    Text(playerA.take(12), color = muted, fontSize = 12.sp, modifier = Modifier.weight(1.2f), maxLines = 1)
+                    Text(playerB.take(12), color = muted, fontSize = 12.sp, modifier = Modifier.weight(1.2f), maxLines = 1)
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(androidx.compose.ui.graphics.Color.White.copy(0.1f)))
+                games.forEach { g ->
+                    val result = g.optString("result", "")
+                    val payA = g.optDouble("amount_player_a", 0.0)
+                    val payB = g.optDouble("amount_player_b", 0.0)
+                    val mins = g.optInt("minutes", 0)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("#${g.optInt("round_number")}" + if (mins > 0) "  ${mins} min" else "",
+                            color = androidx.compose.ui.graphics.Color.White, fontSize = 14.sp, modifier = Modifier.weight(1.1f))
+                        Text(when (result) {
+                                "A" -> "${playerA.take(12)} won"
+                                "B" -> "${playerB.take(12)} won"
+                                else -> "Draw - split"
+                            },
+                            color = if (result == "DRAW") amber else green, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1.8f), maxLines = 1)
+                        Text(kes(g.optDouble("amount_kes", 0.0)), color = androidx.compose.ui.graphics.Color(0xFFCBD5E1), fontSize = 14.sp, modifier = Modifier.weight(1.1f))
+                        Text(if (payA > 0) kes(payA) else "-", color = if (payA > 0) red else muted, fontSize = 14.sp,
+                            fontWeight = if (payA > 0) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1.2f))
+                        Text(if (payB > 0) kes(payB) else "-", color = if (payB > 0) red else muted, fontSize = 14.sp,
+                            fontWeight = if (payB > 0) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1.2f))
+                    }
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(androidx.compose.ui.graphics.Color.White.copy(0.1f)))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("TOTAL", color = muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(2.9f))
+                    Text(kes(games.sumOf { it.optDouble("amount_kes", 0.0) }), color = androidx.compose.ui.graphics.Color.White,
+                        fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1.1f))
+                    Text(kes(totalA), color = androidx.compose.ui.graphics.Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1.2f))
+                    Text(kes(totalB), color = androidx.compose.ui.graphics.Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1.2f))
+                }
+            }
         }
     }
 }
