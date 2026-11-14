@@ -367,6 +367,7 @@ fun PSBillScreensConfigView(
                         actionNodeId = null
                         // Ending the match does not lock the screen on its own.
                         if (ok) postScreenAction(openNode, "stop", JSONObject(), "${nodeName(openNode)} locked")
+                        else loadScreenDetails(openNode)   // e.g. the session already ended: the card goes away
                     }
                 }
             },
@@ -567,7 +568,10 @@ private fun ScreenDetail(
                 "activity" -> item { activityTab() }
                 "shots" -> item { shotsTab() }
                 "control" -> item {
-                    if (activeMatch != null) {
+                    // Results can only be entered while the screen's session runs (the server refuses after)
+                    val live = node.optString("status").uppercase(Locale.US) in setOf("ACTIVE", "OVERTIME", "PENDING") &&
+                        !node.optBoolean("has_ended_session")
+                    if (activeMatch != null && live) {
                         LoserPayMatchCard(activeMatch, null, busy, onRound, onEndMatch)
                     } else {
                         ScreenControl(node, label, games, busy, selectedGame, onGameChange, selectedBilling, onBillingChange, onAction, onLoserStart, overcharge)
