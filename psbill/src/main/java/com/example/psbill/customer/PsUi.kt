@@ -255,6 +255,19 @@ fun pendingTopupRequest(node: org.json.JSONObject): org.json.JSONObject? {
     return if (System.currentTimeMillis() - at < 10 * 60_000L) r else null
 }
 
+/** A start the player asked for on the TV while others are queued (another game, or before their
+ *  turn was called), while it waits for staff (10 minutes). */
+fun pendingGameRequest(node: org.json.JSONObject): org.json.JSONObject? {
+    val r = node.optJSONObject("game_request") ?: return null
+    if (r.optString("status") != "PENDING") return null
+    val at = runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+            .parse(r.optString("at").take(19))?.time
+    }.getOrNull() ?: return null
+    return if (System.currentTimeMillis() - at < 10 * 60_000L) r else null
+}
+
 fun nodeName(node: org.json.JSONObject): String =
     node.optString("device_name").takeIf { it.isNotBlank() && it != "null" }
         ?: node.optString("name").takeIf { it.isNotBlank() && it != "null" }

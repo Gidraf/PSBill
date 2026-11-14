@@ -213,6 +213,10 @@ class LockActivity : ComponentActivity() {
     private var loserPayPlayerA by mutableStateOf("")
     private var loserPayPlayerB by mutableStateOf("")
     private var loserPayGameName by mutableStateOf("")
+    // A start the server refused (players queued): the reason, and whether the attendant is asked
+    private var startNotice by mutableStateOf<String?>(null)
+    private var startNoticePending by mutableStateOf(false)
+    private var myGameRequestAt: String? = null
 
     private fun prettyLabel(raw: String): String {
         val value = raw.trim().replace('_', ' ').replace('-', ' ')
@@ -423,6 +427,20 @@ class LockActivity : ComponentActivity() {
                 }
             }
             deviceBillingMode = json.optCleanString("billing_mode", "POSTPAID")
+            // The attendant's answer to this TV's game request
+            json.optJSONObject("game_request")?.let { gr ->
+                if (myGameRequestAt != null && gr.optString("at") == myGameRequestAt) {
+                    when (gr.optString("status")) {
+                        "DECLINED" -> {
+                            startNoticePending = false
+                            startNotice = "The attendant did not approve ${gr.optString("requested_game")}. " +
+                                "This screen is for the queue (#${gr.optInt("ticket_number")} ${gr.optString("ticket_game")})."
+                            myGameRequestAt = null
+                        }
+                        "APPROVED", "SUPERSEDED" -> { startNotice = null; startNoticePending = false; myGameRequestAt = null }
+                    }
+                }
+            }
 
             val status = json.optCleanString("status", "LOCKED").uppercase(Locale.US)
             loserPayPending = status == "PENDING"
@@ -673,6 +691,10 @@ class LockActivity : ComponentActivity() {
                         onRequestTopup = if (invoiceBillingMode.equals("PREPAID", true) || endedSessionBillingMode.equals("PREPAID", true))
                             { mins: Int -> requestTopup(mins) } else null,
                     )
+                }
+
+                startNotice?.let { msg ->
+                    StartBlockedDialog(msg, startNoticePending) { startNotice = null; startNoticePending = false }
                 }
 
                 if (showAdminLoginDialog) {
@@ -1014,7 +1036,9 @@ class LockActivity : ComponentActivity() {
                                 Toast.makeText(this@LockActivity, "Loser Pay started! QR link ready.", Toast.LENGTH_LONG).show()
                             }
                         } else {
-                            Toast.makeText(this@LockActivity, "Failed: ${resp.code}", Toast.LENGTH_SHORT).show()
+                            startNoticePending = false
+                            startNotice = runCatching { JSONObject(bodyStr).optString("error") }.getOrNull()
+                                ?.takeIf { it.isNotBlank() && it != "null" } ?: "Could not start loser pay (error ${resp.code}). Ask the attendant."
                         }
                     }
                 }
@@ -1080,11 +1104,20 @@ class LockActivity : ComponentActivity() {
                         }
                     } else {
                         val code = response.code
+                        val errBody = runCatching { JSONObject(response.body?.string() ?: "") }.getOrNull()
                         runOnUiThread {
-                            if (code == 401 || code == 403) {
-                                handleRevocationInActivity()
-                            } else {
-                                startSessionLocally(mode, game, minutes)
+                            when {
+                                code == 401 || code == 403 -> handleRevocationInActivity()
+                                // Server down: play offline, it is settled on the next sync
+                                code >= 500 -> startSessionLocally(mode, game, minutes)
+                                // The server said no (players queued, bad voucher ...): never start anyway
+                                else -> {
+                                    val gr = errBody?.optJSONObject("game_request")
+                                    startNoticePending = errBody?.optString("code") == "NEEDS_APPROVAL"
+                                    myGameRequestAt = gr?.optString("at")?.takeIf { it.isNotBlank() }
+                                    startNotice = errBody?.optString("error")?.takeIf { it.isNotBlank() && it != "null" }
+                                        ?: "This screen can't start now. Ask the attendant."
+                                }
                             }
                         }
                     }
@@ -2194,6 +2227,45 @@ fun ManualStartDialog(
     )
 }
 
+
+/** The server refused a start from the TV: why, and (pending) that the attendant has been asked. */
+@Composable
+fun StartBlockedDialog(message: String, pending: Boolean, onClose: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(100); runCatching { focus.requestFocus() } }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            Modifier.width(520.dp)
+                .background(androidx.compose.ui.graphics.Color(0xFF0B0F19), RoundedCornerShape(16.dp))
+                .border(2.dp, androidx.compose.ui.graphics.Color(0xFFFBBF24), RoundedCornerShape(16.dp))
+                .padding(26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(if (pending) "ASK THE ATTENDANT" else "CAN'T START YET", color = androidx.compose.ui.graphics.Color(0xFFFBBF24),
+                fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text(message, color = androidx.compose.ui.graphics.Color.White, fontSize = 17.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            if (pending) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(color = androidx.compose.ui.graphics.Color(0xFFFBBF24), strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp))
+                    Text("Waiting for the attendant to approve it. The game starts when they do.",
+                        color = androidx.compose.ui.graphics.Color(0xFF94A3B8), fontSize = 13.sp)
+                }
+            }
+            var focused by remember { mutableStateOf(false) }
+            Button(onClick = onClose,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (focused) androidx.compose.ui.graphics.Color(0xFFFBBF24) else androidx.compose.ui.graphics.Color(0xFF334155),
+                    contentColor = if (focused) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White),
+                modifier = Modifier.focusRequester(focus).onFocusChanged { focused = it.isFocused }) {
+                Text("OK", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
 
 @Composable
 fun SessionSummaryDialog(

@@ -730,6 +730,28 @@ private fun ScreenControl(
     var paidAmount by remember(node.optString("id")) { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // A player at the TV picked a game while others are queued: the attendant decides.
+        pendingGameRequest(node)?.let { req ->
+            val want = req.optString("requested_game")
+            val queued = req.optString("ticket_game")
+            val who = req.optString("player_name").takeIf { it.isNotBlank() && it != "null" } ?: "a player"
+            PsSurface {
+                Text(if (req.optBoolean("different_game")) "The player picked another game" else "A player wants to start",
+                    color = PsTone.Warn, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Wants: $want", color = PSBillThemeColors.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text("Queued: #${req.optInt("ticket_number")} $who - $queued", color = PSBillThemeColors.TextSecondary, fontSize = 13.sp)
+                Text("Approve starts $want, billed at its price, for #${req.optInt("ticket_number")}. Refuse keeps the screen locked.",
+                    color = PSBillThemeColors.TextSecondary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(enabled = !busy,
+                        onClick = { onAction("game-request/approve", JSONObject(), "$want started on $name") }) { Text("Approve") }
+                    TextButton(enabled = !busy,
+                        onClick = { onAction("game-request/decline", JSONObject(), "Refused - the TV tells the player") }) {
+                        Text("Refuse", color = PsTone.Bad)
+                    }
+                }
+            }
+        }
         // The player asked for more time on the TV: take the money, then approve.
         pendingTopupRequest(node)?.let { req ->
             val mins = req.optInt("minutes")

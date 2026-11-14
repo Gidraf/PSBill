@@ -27,6 +27,7 @@ data class ScreenSnap(
     val name: String, val status: String, val ended: Boolean, val online: Boolean,
     val secondsLeft: Int, val prepaid: Boolean, val console: String, val topupAt: String,
     val topupMinutes: Int, val bill: Double, val game: String, val queuePending: Int = 0,
+    val gameReqAt: String = "", val gameReqText: String = "",
 )
 
 data class StaffAlert(val key: String, val urgent: Boolean, val title: String, val text: String) {
@@ -61,6 +62,7 @@ object StaffAlertRules {
     fun snap(j: JSONObject): ScreenSnap {
         val tr = j.optJSONObject("topup_request")
         val pending = tr != null && tr.optString("status") == "PENDING"
+        val gr = j.optJSONObject("game_request")?.takeIf { it.optString("status") == "PENDING" }
         return ScreenSnap(
             name = j.optString("device_name").takeIf { it.isNotBlank() && it != "null" } ?: "Screen",
             status = j.optString("status"),
@@ -74,6 +76,9 @@ object StaffAlertRules {
             bill = j.optDouble("active_billing_kes", 0.0).let { if (it.isNaN()) 0.0 else it },
             game = j.optString("current_game").takeIf { it.isNotBlank() && it != "null" } ?: "",
             queuePending = j.optInt("queue_pending"),
+            gameReqAt = gr?.optString("at").orEmpty(),
+            gameReqText = if (gr == null) "" else
+                "Wants ${gr.optString("requested_game")}; #${gr.optInt("ticket_number")} queued for ${gr.optString("ticket_game")}. Approve or refuse in PSBill.",
         )
     }
 
@@ -84,6 +89,9 @@ object StaffAlertRules {
             if (n.topupAt.isNotBlank() && n.topupAt != prev?.get(id)?.topupAt) {
                 out += StaffAlert("topup:$id", true, "${n.name} wants more time",
                     (if (n.topupMinutes > 0) "${n.topupMinutes} min requested. " else "") + "Approve or decline in PSBill.")
+            }
+            if (n.gameReqAt.isNotBlank() && n.gameReqAt != prev?.get(id)?.gameReqAt) {
+                out += StaffAlert("game:$id", true, "${n.name}: player asks to start a game", n.gameReqText)
             }
             if (n.queuePending > (prev?.get(id)?.queuePending ?: 0)) {
                 out += StaffAlert("queue:$id", true, "Queue request for ${n.name}",
