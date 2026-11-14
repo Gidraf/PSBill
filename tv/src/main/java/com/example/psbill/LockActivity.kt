@@ -605,15 +605,8 @@ class LockActivity : ComponentActivity() {
                     }
                 }
 
-                LaunchedEffect(updateState.ready, updateState.hint, showInvoiceDialog, hasEndedSession, isAdminLoggedIn) {
-                    fun idle() = isLockActivityVisible && !showInvoiceDialog && !hasEndedSession && !isAdminLoggedIn
-                        && KioskService.activeDeviceStatus == "LOCKED"
-                    if (updateState.ready && !updateState.installing && !AppUpdater.installInProgress
-                        && AppUpdater.canInstall(this@LockActivity) && idle()) {
-                        kotlinx.coroutines.delay(UPDATE_IDLE_MS)
-                        if (idle() && !AppUpdater.installInProgress) AppUpdater.install(this@LockActivity)
-                    }
-                }
+                // Updates install from KioskService once no session runs (see startUpdateChecks)
+                LaunchedEffect(isAdminLoggedIn) { staffSignedIn = isAdminLoggedIn }
                 
                 LockScreenContent(
                     macAddress = macAddress,
@@ -1394,6 +1387,8 @@ class LockActivity : ComponentActivity() {
 
     companion object {
         var isLockActivityVisible = false
+        /** Staff are signed in on the TV (admin dashboard): an update must not install over them. */
+        @Volatile var staffSignedIn = false
         /** The screen-capture consent dialog is up: do not relaunch over it or lock the task. */
         @Volatile var projectionAskOpen = false
         private const val PROJECTION_ASK_EVERY_MS = 30 * 60_000L

@@ -385,6 +385,7 @@ class KioskService : Service() {
     }
 
     private var updateCheckJob: Job? = null
+    private var updateInstallJob: Job? = null
 
     private fun startUpdateChecks() {
         AppUpdater.restore(this)
@@ -393,6 +394,27 @@ class KioskService : Service() {
             while (true) {
                 AppUpdater.checkNow(this@KioskService)
                 delay(30 * 60_000L)
+            }
+        }
+        // Install a downloaded update once nobody has played for 2 minutes. Only a running session
+        // holds it back: an unpaid bill or the console-off cover does not (the bill comes back from
+        // the server after the restart). Before 1.154 it waited for the bare lock screen with no
+        // bill, so a TV left with a bill or the console off never updated.
+        updateInstallJob?.cancel()
+        updateInstallJob = serviceScope.launch {
+            var idleSince = 0L
+            while (true) {
+                delay(15_000L)
+                val st = AppUpdater.state.value
+                val live = deviceStatus in setOf("ACTIVE", "OVERTIME", "PENDING", "RUNNING", "PLAYING") ||
+                    LockActivity.staffSignedIn || LockActivity.projectionAskOpen
+                if (live || !st.ready || st.installing || AppUpdater.installInProgress) { idleSince = 0L; continue }
+                if (idleSince == 0L) { idleSince = System.currentTimeMillis(); continue }
+                if (System.currentTimeMillis() - idleSince >= 120_000L && AppUpdater.canInstall(this@KioskService)) {
+                    Log.i(TAG, "Installing update ${st.hint?.optLong("version_code")} (screen idle)")
+                    AppUpdater.install(this@KioskService)
+                    idleSince = 0L
+                }
             }
         }
     }
