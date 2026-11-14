@@ -744,6 +744,8 @@ class LockActivity : ComponentActivity() {
                         val body = response.body?.string() ?: ""
                         try {
                             val arr = JSONArray(body)
+                            getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE).edit()
+                                .putString("games_cache", arr.toString()).apply()
                             runOnUiThread {
                                 gamesList.clear()
                                 for (i in 0 until arr.length()) {
@@ -911,14 +913,17 @@ class LockActivity : ComponentActivity() {
         })
     }
 
+    /**
+     * No made-up games: when the server can't be reached, show the lounge's own list from the last
+     * good load (saved on this TV); with none saved the lock screen says the games are being set up.
+     */
     private fun populateDefaultGames() {
-        gamesList.clear()
-        val defaults = listOf("FC 24", "FIFA 23", "GTA V", "Mortal Kombat 1", "Tekken 8", "Spider-Man 2")
-        for (g in defaults) {
-            gamesList.add(JSONObject().apply {
-                put("game_name", g)
-            })
-        }
+        if (gamesList.isNotEmpty()) return
+        val raw = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE).getString("games_cache", null) ?: return
+        try {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { gamesList.add(it) }
+        } catch (_: Exception) {}
     }
 
     /**
@@ -2802,7 +2807,7 @@ fun LoserPayPendingContent(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Game:", color = androidx.compose.ui.graphics.Color.Gray, fontSize = 13.sp)
-                        Text(game.ifEmpty { "FIFA" }, color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(game.ifEmpty { "Any game" }, color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                     HorizontalDivider(color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.08f))
                     Row(

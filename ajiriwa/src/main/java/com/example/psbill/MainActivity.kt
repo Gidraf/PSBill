@@ -2340,7 +2340,7 @@ class MainActivity : ComponentActivity() {
         }
 
         var mode by remember { mutableStateOf(initialMode) }
-        var game by remember { mutableStateOf(initialGame.ifEmpty { "FC 24" }) }
+        var game by remember { mutableStateOf(initialGame.ifEmpty { gamesList.firstOrNull()?.optString("game_name", "").orEmpty() }) }
         var voucherCode by remember { mutableStateOf("") }
         var allowOvertime by remember { mutableStateOf(true) }
         var isLoserPay by remember { mutableStateOf(false) }

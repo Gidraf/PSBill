@@ -553,7 +553,7 @@ class KioskService : Service() {
                 }
                 "START_MANUAL_SESSION" -> {
                     val mode = intent.getStringExtra("billing_mode") ?: "POSTPAID"
-                    val game = intent.getStringExtra("current_game") ?: "FIFA"
+                    val game = intent.getStringExtra("current_game") ?: ""
                     val mins = intent.getIntExtra("base_minutes", 0)
                     
                     deviceStatus = "ACTIVE"
@@ -1217,12 +1217,12 @@ class KioskService : Service() {
                             put("loser_pay_token", loserPayToken)
                             put("qr_link", qrLink)
                             put("billing_mode", data.optString("billing_mode", "POSTPAID"))
-                            put("current_game", data.cleanStr("game_name", "FIFA"))
+                            put("current_game", data.cleanStr("game_name", ""))
                             
                             val lpObj = JSONObject().apply {
                                 put("player_a", loserPayPlayerA.value)
                                 put("player_b", loserPayPlayerB.value)
-                                put("game_name", data.cleanStr("game_name", "FIFA"))
+                                put("game_name", data.cleanStr("game_name", ""))
                                 put("status", status)
                                 put("is_supervised", isSupervised)
                             }
