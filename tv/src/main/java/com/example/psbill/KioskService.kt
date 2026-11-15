@@ -1194,6 +1194,10 @@ class KioskService : Service() {
                         handleRevocationOrDeactivation()
                     }
                 }
+                "show_bill" -> {
+                    // Staff tapped "Show on TV": the player's time left / bill for a few seconds
+                    Handler(Looper.getMainLooper()).post { showBillFromStaff(data) }
+                }
                 "sleep_station" -> {
                     Handler(Looper.getMainLooper()).post {
                         showSleepOverlay()
@@ -1770,6 +1774,7 @@ class KioskService : Service() {
                             BackupWifi.onSync(this@KioskService, data)
                             ScreenGrab.onSync(this@KioskService, data)
                             AppUpdater.onLatest(this@KioskService, data.optJSONObject("app_latest"))
+                            data.optJSONObject("show_bill")?.let { showBillFromStaff(it) }
                             // Owner paused / is removing PSBill (RemoteControl): leave the screen alone
                             if (RemoteControl.onSync(this@KioskService, data, deviceId, apiBaseUrl(serverDomain),
                                     token, fingerprint)) {
@@ -2486,6 +2491,20 @@ class KioskService : Service() {
             delay(millis)
             queueNotice.value = null
         }
+    }
+
+    private var lastShownBillId: String? = null
+
+    /** Staff showed the player their time / bill (live push or the sync fallback): once per id. */
+    private fun showBillFromStaff(data: JSONObject) {
+        val id = data.optString("id")
+        if (id.isBlank() || id == lastShownBillId) return
+        lastShownBillId = id
+        val text = data.optString("text").trim()
+        if (text.isEmpty() || text == "null") return
+        val millis = data.optInt("seconds", 20).coerceIn(5, 60) * 1000L
+        showNotice(text, millis)
+        peekMeter(millis)
     }
 
     /** Show the meter for a few seconds (Continue in the BACK dialog). Amber/red stay on anyway. */

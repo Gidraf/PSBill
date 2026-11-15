@@ -223,7 +223,13 @@ fun PSBillScreensConfigView(
                         return@runOnUiThread
                     }
                     if (response.isSuccessful) {
-                        val msg = if (endpoint == "topup" || endpoint == "topup-request/approve") topupMessage(body, nodeName(node)) ?: successMessage else successMessage
+                        val msg = when (endpoint) {
+                            "topup", "topup-request/approve" -> topupMessage(body, nodeName(node)) ?: successMessage
+                            // What the TV shows, so the attendant can read it out too
+                            "show-bill" -> runCatching { JSONObject(body).optString("text") }.getOrNull()
+                                ?.takeIf { it.isNotBlank() }?.let { "On the TV: ${it.replace("\n", " - ")}" } ?: successMessage
+                            else -> successMessage
+                        }
                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         onRefresh()
                         loadScreenDetails(node)
@@ -572,6 +578,8 @@ private fun ScreenDetail(
                     val live = node.optString("status").uppercase(Locale.US) in setOf("ACTIVE", "OVERTIME", "PENDING") &&
                         !node.optBoolean("has_ended_session")
                     if (activeMatch != null && live) {
+                        ShowOnTvButton(nodeName(node), busy, onAction)
+                        Spacer(Modifier.height(10.dp))
                         LoserPayMatchCard(activeMatch, null, busy, onRound, onEndMatch)
                     } else {
                         ScreenControl(node, label, games, busy, selectedGame, onGameChange, selectedBilling, onBillingChange, onAction, onLoserStart, overcharge)
@@ -708,6 +716,15 @@ private fun ScreenDetail(
     }
 }
 
+/** The player asks "how much time is left?": the TV shows their time / bill for 20 seconds. */
+@Composable
+private fun ShowOnTvButton(name: String, busy: Boolean, onAction: (String, JSONObject, String) -> Unit) {
+    OutlinedButton(
+        onClick = { onAction("show-bill", JSONObject(), "Time and bill shown on $name") },
+        enabled = !busy, modifier = Modifier.fillMaxWidth().height(48.dp),
+    ) { Icon(Icons.Filled.Tv, null); Spacer(Modifier.width(8.dp)); Text("Show time & bill on the TV") }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScreenControl(
@@ -794,6 +811,7 @@ private fun ScreenControl(
                         colors = ButtonDefaults.buttonColors(containerColor = PsTone.Good)
                     ) { Icon(Icons.Filled.AddCircle, null); Spacer(Modifier.width(8.dp)); Text("Top up time") }
                 }
+                ShowOnTvButton(name, busy, onAction)
                 Button(
                     onClick = { confirmEnd = true }, enabled = !busy, modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PsTone.Bad)
