@@ -346,7 +346,9 @@ def auto_builds(head):
     if open(marker).read().strip() == head if os.path.exists(marker) else False:
         return
     for app in AUTO_APPS:
-        status, res = api("/api/v1/app-builds/worker/jobs", {"app": app, "modules": "all", "reason": "AUTO"})
+        # name the commit: the heartbeat may not have reported it yet, and CVPAP would answer with the old build
+        status, res = api("/api/v1/app-builds/worker/jobs", {"app": app, "modules": "all", "reason": "AUTO",
+                                                             "head_commit": head})
         log(f"auto build {app}: {res.get('status', status)}")
     with open(marker, "w") as f:
         f.write(head)
@@ -370,7 +372,7 @@ def auto_preset_builds(head):
         return
     for p in res.get("items") or []:
         status, job = api("/api/v1/app-builds/worker/jobs",
-                          {"app": p["app"], "modules": p["modules"], "reason": "AUTO"})
+                          {"app": p["app"], "modules": p["modules"], "reason": "AUTO", "head_commit": head})
         log(f"preset build {p['app']} {','.join(p.get('business_types') or [])}: {job.get('status', status)}")
     with open(marker, "w") as f:
         f.write(f"{head} {time.time()}")
