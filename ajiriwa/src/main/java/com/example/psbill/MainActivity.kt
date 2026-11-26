@@ -330,6 +330,10 @@ class MainActivity : ComponentActivity() {
         var printerIp by remember { mutableStateOf(initialPrinterIp) }
         
         val isAdminUser = remember(userJson) { isAdmin(userJson) }
+        // owner or attendant (server access.staff_role, in the login reply); refreshed below, since an owner may change it
+        val staffRole = remember(userJson) {
+            runCatching { JSONObject(userJson).optString("staff_role") }.getOrNull()?.takeIf { it == "attendant" } ?: "owner"
+        }
         val canViewVouchers = remember(userJson) { isAdminUser || hasPermission(userJson, "kiosk.view_vouchers") || hasPermission(userJson, "kiosk.create_vouchers") }
         val canViewPricing = remember(userJson) { isAdminUser || hasPermission(userJson, "kiosk.view_pricing") || hasPermission(userJson, "kiosk.manage_games") }
         val canViewReports = remember(userJson) { isAdminUser || hasPermission(userJson, "kiosk.view_reports") || hasPermission(userJson, "kiosk.download_reports") }
@@ -417,6 +421,7 @@ class MainActivity : ComponentActivity() {
                 getSharedPreferences("AttenderPrefs", Context.MODE_PRIVATE).edit().putString("printer_ip", newIp).apply()
             },
             navigateTo = { key -> selectedKey = key },
+            staffRole = staffRole,
         )
 
         val saveSettings = {
@@ -451,6 +456,26 @@ class MainActivity : ComponentActivity() {
                     val slugs = com.example.psbill.core.Permissions.parseModulesResponse(body)
                     val json = JSONObject().put("modules", JSONArray(slugs.toList())).toString()
                     runOnUiThread { permissionsJson = json }
+                }
+            })
+        }
+
+        // Who this login is now (owner / attendant): /admin-users/me, on every sign-in and app start.
+        LaunchedEffect(authToken, partnerId) {
+            if (authToken.isEmpty() || partnerId.isEmpty()) return@LaunchedEffect
+            val req = Request.Builder().url("${apiBaseUrl(serverDomain)}/admin-users/me").headers(getHeaders()).build()
+            client.newCall(req).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {}
+                override fun onResponse(call: Call, response: Response) {
+                    val role = response.use { r -> if (r.isSuccessful) runCatching { JSONObject(r.body?.string().orEmpty()).optString("staff_role") }.getOrNull() else null }
+                    if (role.isNullOrBlank()) return
+                    runOnUiThread {
+                        val u = runCatching { JSONObject(userJson) }.getOrNull() ?: return@runOnUiThread
+                        if (u.optString("staff_role") == role) return@runOnUiThread
+                        u.put("staff_role", role)
+                        userJson = u.toString()
+                        getSharedPreferences("AttenderPrefs", Context.MODE_PRIVATE).edit().putString("user_json", userJson).apply()
+                    }
                 }
             })
         }
@@ -1015,15 +1040,17 @@ class MainActivity : ComponentActivity() {
             // SMS (mobile-only core) + the always-visible items, exactly like web.
             val effectiveAllowed = if (arcadeAgent || isAdminUser) allowedModules + "kiosk" else allowedModules
             val drawerItems = com.example.psbill.core.AppModules.partnerVisible(effectiveAllowed, canSendSms)
-            // The home screen may not be compiled in (or not enabled for this partner).
+                .filter { staffRole != "attendant" || it.key in com.example.psbill.core.AppModules.attendantKeys }
+            // The home screen may not be compiled in (or not enabled for this partner). Attendants start on their tanks.
             LaunchedEffect(drawerItems.map { it.key }) {
                 if (drawerItems.isNotEmpty() && drawerItems.none { it.key == selectedKey } && selectedKey != "settings") {
-                    selectedKey = drawerItems.first().key
+                    selectedKey = drawerItems.firstOrNull { staffRole == "attendant" && it.key == "stock" }?.key ?: drawerItems.first().key
                 }
             }
             val roleLabel = when {
                 isAdminUser -> "Administrator"
                 com.example.psbill.core.Permissions.isArcadeAgent(userJson) -> "Arcade attendant"
+                staffRole == "attendant" -> "Attendant"
                 else -> "Business"
             }
             LaunchedEffect(selectedKey) { com.example.psbill.core.ActivityLog.log("screen_open", screen = selectedKey, context = context) }
@@ -2190,6 +2217,7 @@ class MainActivity : ComponentActivity() {
                                                 val accountType = json.optString("account_type", "partner")
                                                 userJson.put("account_type", accountType)
                                                 if (accountType == "admin") userJson.put("is_super_admin", true)
+                                                userJson.put("staff_role", json.optString("staff_role", "owner"))
                                                 onLoginSuccess(token, partnerId, userJson.toString())
                                                 Toast.makeText(context, "Login successful", Toast.LENGTH_SHORT).show()
                                             } catch (e: Exception) {

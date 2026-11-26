@@ -50,7 +50,7 @@ import java.util.UUID
  */
 object StockFeature : FeatureModule() {
     override val slug = "stock"
-    override val nav = NavModule("stock", "Stock & Tanks", Icons.AutoMirrored.Filled.List, listOf("inventory"), order = 15)
+    override val nav = NavModule("stock", "Tanks & filters", Icons.AutoMirrored.Filled.List, listOf("inventory"), order = 15)
 
     private val http by lazy { com.example.psbill.core.ActivityLog.client }
 
@@ -60,7 +60,9 @@ object StockFeature : FeatureModule() {
         suspend fun call(req: Request.Builder): JSONObject = withContext(Dispatchers.IO) {
             http.newCall(req.headers(ctx.headers()).build()).execute().use { r ->
                 val body = JSONObject(r.body?.string().orEmpty().ifBlank { "{}" })
-                if (!r.isSuccessful) throw IOException(body.optString("error").ifBlank { "Request failed (${r.code})" })
+                if (!r.isSuccessful) throw IOException(body.optString("error").ifBlank {
+                    body.optJSONArray("errors")?.optJSONObject(0)?.optString("error").orEmpty()
+                }.ifBlank { if (r.code == 403) "Only the business owner can do this." else "Request failed (${r.code})" })
                 body
             }
         }
@@ -75,6 +77,13 @@ object StockFeature : FeatureModule() {
             cal.add(java.util.Calendar.DAY_OF_YEAR, -(days - 1))
             return call(Request.Builder().url("$base/reports/flow?from=${fmt.format(cal.time)}&to=$to"))
         }
+        /** Today's meter reading + cash count (server daily_check.py); a reading saved here unlocks the app too. */
+        suspend fun daily() = call(Request.Builder().url("$base/daily-check"))
+        suspend fun meter(itemId: String, reading: String) = post("/daily-check", JSONObject().put("readings", JSONArray().put(
+            JSONObject().put("item_id", itemId).put("reading", reading).put("client_ref", "app:${UUID.randomUUID()}"))))
+        private val board get() = "${ctx.baseUrl}/api/v1/water-board/${ctx.partnerId}"
+        suspend fun filters() = call(Request.Builder().url("$board/filters"))
+        suspend fun filterChanged() = call(Request.Builder().url("$board/filters/change").post("{}".toRequestBody(json)))
         suspend fun post(path: String, body: JSONObject) = call(Request.Builder().url("$base$path").post(body.toString().toRequestBody(json)))
         suspend fun put(path: String, body: JSONObject) = call(Request.Builder().url("$base$path").put(body.toString().toRequestBody(json)))
     }
@@ -108,11 +117,16 @@ object StockFeature : FeatureModule() {
 
         Column(Modifier.fillMaxSize()) {
             TabRow(selectedTabIndex = tab, containerColor = AjiriwaColors.Canvas, contentColor = AjiriwaColors.Primary) {
-                listOf("Levels", "Activity", "Report").forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
+                (if (ctx.isAttendant) listOf("Tanks", "Activity") else listOf("Tanks", "Activity", "Report")).forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
             }
             error?.let { Text(it, color = AjiriwaColors.Danger, modifier = Modifier.padding(16.dp)) }
             when (tab) {
-                0 -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                0 -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // meter reading first (owner 2026-11-26), then the filter turn, then the tanks
+                    item(key = "today_meter") {
+                        TodayMeterCard(api, reload) { id -> items.firstOrNull { it.optString("id") == id }?.let { action = it to "METER" } }
+                    }
+                    if (items.any { it.optString("kind") == "BULK" }) item(key = "filters") { FilterCard(api) }
                     if (units.isNotEmpty()) item {
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(selected = unit == "", onClick = { unit = "" }, label = { Text("All") })
@@ -129,9 +143,9 @@ object StockFeature : FeatureModule() {
                     if (shown.isEmpty() && error == null) item {
                         Text("No stock items here yet — add them on the web dashboard (Inventory → Levels & flow).", color = AjiriwaColors.TextSecondary)
                     }
-                    items(shown, key = { it.getString("id") }) { item -> LevelCard(item) { a -> action = item to a } }
+                    items(shown, key = { it.getString("id") }) { item -> LevelCard(item, ctx.isAttendant) { a -> action = item to a } }
                 }
-                1 -> Activity(api, reload) { reload++ }
+                1 -> Activity(api, reload, canReverse = !ctx.isAttendant) { reload++ }
                 2 -> Report(api, reload)
             }
         }
@@ -221,8 +235,93 @@ object StockFeature : FeatureModule() {
         }
     }
 
+    /** Is today's meter reading in? Tap a meter to read it (same as the morning lock). */
     @Composable
-    private fun LevelCard(item: JSONObject, onAction: (String) -> Unit) {
+    private fun TodayMeterCard(api: Api, reload: Int, onRead: (String) -> Unit) {
+        var st by remember { mutableStateOf<JSONObject?>(null) }
+        LaunchedEffect(reload) { st = runCatching { api.daily() }.getOrNull() }
+        val s = st ?: return
+        if (!s.optBoolean("required")) return
+        val meters = s.optJSONArray("meters").let { a -> if (a == null) emptyList() else (0 until a.length()).map { a.getJSONObject(it) } }
+        val due = meters.count { !it.optBoolean("done") }
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                .background(if (due > 0) AjiriwaColors.Warning.copy(alpha = 0.12f) else AjiriwaColors.Surface).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Today's meter reading", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            meters.forEach { m ->
+                val done = m.optBoolean("done")
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(m.optString("name"), color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                        Text(
+                            if (done) "Read: ${m.optString("reading")} · ${fmt(m.optDouble("litres", 0.0))} ${m.optString("unit")}" else "Not read yet today",
+                            color = if (done) AjiriwaColors.TextMuted else AjiriwaColors.Warning, fontSize = 12.sp,
+                        )
+                    }
+                    if (done) OutlinedButton(onClick = { onRead(m.optString("item_id")) }) { Text("Correct") }
+                    else Button(onClick = { onRead(m.optString("item_id")) }) { Text("Read now") }
+                }
+            }
+            s.optJSONObject("cash")?.takeIf { it.optBoolean("blocking") }?.let {
+                Text("Cash count for ${it.optString("day")} is still missing: the app asks for it at closing.", color = AjiriwaColors.Warning, fontSize = 12.sp)
+            }
+        }
+    }
+
+    /** Two filters in turn: tap when the turn is done (server water_board.record_filter_change, debounced 10 min). */
+    @Composable
+    private fun FilterCard(api: Api) {
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        var f by remember { mutableStateOf<JSONObject?>(null) }
+        var ask by remember { mutableStateOf(false) }
+        var saving by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { f = runCatching { api.filters() }.getOrNull() }
+        val s = f ?: return
+        val overdue = s.optBoolean("overdue")
+        val hours = s.optDouble("due_in_hours")
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                .background(if (overdue) AjiriwaColors.Danger.copy(alpha = 0.10f) else AjiriwaColors.Surface).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("Filters", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Text(
+                when {
+                    !s.optBoolean("started") -> "No filter change recorded yet. Tap below the next time you change them."
+                    overdue -> "Change is due now (every ${s.optInt("every_days")} days)."
+                    !hours.isNaN() -> "Next change in ${if (hours >= 48) "${(hours / 24).toInt()} days" else "${hours.toInt()} hours"} (every ${s.optInt("every_days")} days)."
+                    else -> "Every ${s.optInt("every_days")} days."
+                },
+                color = if (overdue) AjiriwaColors.Danger else AjiriwaColors.TextSecondary, fontSize = 13.sp,
+            )
+            s.optString("last_change").takeIf { it.length >= 16 }?.let {
+                Text("Last change ${it.take(16).replace('T', ' ')} UTC", color = AjiriwaColors.TextMuted, fontSize = 11.sp)
+            }
+            Button(onClick = { ask = true }, enabled = !saving) { Text(if (saving) "Saving…" else "Filter changed") }
+        }
+        if (ask) AlertDialog(
+            onDismissRequest = { ask = false },
+            title = { Text("Filter changed?") },
+            text = { Text("The first filter came out, the second moved up and a new one went in second.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    ask = false; saving = true
+                    scope.launch {
+                        runCatching { api.filterChanged() }.onSuccess { f = it; Toast.makeText(context, "Filter change saved", Toast.LENGTH_SHORT).show() }
+                            .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                        saving = false
+                    }
+                }) { Text("Yes, changed") }
+            },
+            dismissButton = { TextButton(onClick = { ask = false }) { Text("Cancel") } },
+        )
+    }
+
+    @Composable
+    private fun LevelCard(item: JSONObject, attendant: Boolean, onAction: (String) -> Unit) {
         val unit = item.optString("unit")
         val bulk = item.optString("kind") == "BULK"
         val flags = item.optJSONArray("flags")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
@@ -265,13 +364,13 @@ object StockFeature : FeatureModule() {
                 )
             }
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (item.optBoolean("meter_enabled")) AssistChip(onClick = { onAction("METER") }, label = { Text("Meter reading", fontWeight = FontWeight.Bold) })
                 AssistChip(onClick = { onAction("RESTOCK") }, label = { Text("Restock") })
-                if (item.optBoolean("meter_enabled")) AssistChip(onClick = { onAction("METER") }, label = { Text("Meter reading") })
                 AssistChip(onClick = { onAction("TRANSFER") }, label = { Text(item.optString("transfer_label")) })
                 AssistChip(onClick = { onAction("SALE") }, label = { Text("Sale") })
                 AssistChip(onClick = { onAction("WASTE") }, label = { Text("Loss / spoiled") })
                 if (bulk) AssistChip(onClick = { onAction("BACKWASH") }, label = { Text("Backwash") })
-                AssistChip(onClick = { onAction("EDIT") }, label = { Text("Edit levels") })
+                if (!attendant) AssistChip(onClick = { onAction("EDIT") }, label = { Text("Edit levels") })
                 AssistChip(onClick = { onAction("STOCK_TAKE") }, label = { Text("Stock take") })
             }
         }
@@ -368,8 +467,9 @@ object StockFeature : FeatureModule() {
                         val id = item.getString("id")
                         runCatching {
                             when (action) {
-                                "METER" -> api.post("/items/$id/meter", JSONObject().put("reading", amount.toDouble()).put("note", note)
-                                    .put("client_ref", "app:${UUID.randomUUID()}"))
+                                "METER" -> api.meter(id, amount).let { r ->   // through the daily check, so it unlocks the app too
+                                    r.optJSONArray("results")?.optJSONObject(0)?.let { JSONObject().put("message", it.optString("message")) } ?: r
+                                }
                                 "EDIT" -> api.put("/items/$id/levels", JSONObject().apply {
                                     amount.toDoubleOrNull()?.let { put("storage", it) }; amount2.toDoubleOrNull()?.let { put("ready", it) }
                                     put("storage_capacity", cap1.toDoubleOrNull() ?: JSONObject.NULL); put("ready_capacity", cap2.toDoubleOrNull() ?: JSONObject.NULL)
@@ -396,7 +496,7 @@ object StockFeature : FeatureModule() {
     }
 
     @Composable
-    private fun Activity(api: Api, reload: Int, onChanged: () -> Unit) {
+    private fun Activity(api: Api, reload: Int, canReverse: Boolean, onChanged: () -> Unit) {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         var rows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
@@ -414,7 +514,7 @@ object StockFeature : FeatureModule() {
                             color = AjiriwaColors.TextMuted, fontSize = 11.sp)
                         m.optString("note").takeIf { it.isNotBlank() && it != "null" }?.let { Text(it, color = AjiriwaColors.TextSecondary, fontSize = 11.sp) }
                     }
-                    if (!voided && m.optString("type") != "VOID") TextButton(onClick = {
+                    if (canReverse && !voided && m.optString("type") != "VOID") TextButton(onClick = {
                         scope.launch {
                             runCatching { api.post("/movements/${m.getString("id")}/void", JSONObject()) }
                                 .onSuccess { onChanged() }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }

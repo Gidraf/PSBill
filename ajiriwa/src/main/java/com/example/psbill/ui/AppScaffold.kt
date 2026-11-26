@@ -130,12 +130,15 @@ fun AppScaffold(
                         Column {
                             Text(
                                 currentTitle,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 color = AjiriwaColors.TextPrimary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
                                 letterSpacing = (-0.02).sp
                             )
-                            Text(brandName, color = AjiriwaColors.TextSecondary, fontSize = 11.sp)
+                            Text(brandName, color = AjiriwaColors.TextSecondary, fontSize = 11.sp, maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         }
                     },
                     navigationIcon = {
@@ -148,7 +151,8 @@ fun AppScaffold(
                 )
             },
         ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            // edge-to-edge: the keyboard no longer resizes the window, so every screen keeps its fields above it here
+            Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
                 content(Modifier.fillMaxSize())
             }
         }

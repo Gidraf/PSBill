@@ -20,8 +20,11 @@ class ModuleContext(
     val onPrinterIpChange: (String) -> Unit,
     /** Switch the drawer to another module by its nav key. */
     val navigateTo: (String) -> Unit,
+    /** "owner" or "attendant" (server: access.staff_role). Attendants get no owner actions; the server refuses them anyway. */
+    val staffRole: String = "owner",
 ) {
     val baseUrl: String get() = "https://$server"
+    val isAttendant: Boolean get() = staffRole == "attendant"
 }
 
 /**

@@ -864,7 +864,8 @@ fun SmsEngineScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SectionTitle("SMS Engine Inbox", "Manage incoming marketing replies, SIM routing, and opt-outs.")
+            // the title shrinks, the buttons keep their place on narrow phones
+            Box(Modifier.weight(1f).padding(end = 6.dp)) { SectionTitle("SMS Engine Inbox", "Manage incoming marketing replies, SIM routing, and opt-outs.") }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (subTab == "INBOX") {
                     Button(

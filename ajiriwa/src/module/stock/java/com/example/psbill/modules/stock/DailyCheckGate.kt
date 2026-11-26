@@ -117,7 +117,7 @@ internal fun DailyCheckGate(ctx: ModuleContext) {
         return
     }
     if (cash != null && System.currentTimeMillis() > reminderHiddenUntil) {
-        Box(Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
+        Box(Modifier.fillMaxSize().navigationBarsPadding().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF1E3A8A)).padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -135,8 +135,9 @@ private fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList
 private fun money(v: Double) = "KES " + "%,.0f".format(v)
 
 private fun niceDay(iso: String): String = runCatching {
-    val d = java.time.LocalDate.parse(iso)
-    d.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.ENGLISH))
+    // java.util, not java.time: java.time needs Android 8+ and the app runs from Android 5
+    val d = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(iso)!!
+    java.text.SimpleDateFormat("EEE d MMM", java.util.Locale.ENGLISH).format(d)
 }.getOrDefault(iso)
 
 @Composable
@@ -171,7 +172,9 @@ private fun DailyCheckScreen(
             // swallow every touch: nothing under this screen can be used
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
     ) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // edge-to-edge app: keep the title off the status bar, Save above the nav bar and the cash box above the keyboard
+        Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (cashOnly) "Close the day" else "Morning check", color = AjiriwaColors.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text(
                 if (cashOnly) "Count the cash in the drawer and enter it."
@@ -273,12 +276,16 @@ private fun MeterCard(m: JSONObject, onReading: (String) -> Unit, notMoved: Bool
             Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Color(0xFF111827)).padding(10.dp)
                 .clip(RoundedCornerShape(22.dp)).background(Color(0xFFF8FAFC)).padding(vertical = 12.dp, horizontal = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        ) { BoxWithConstraints(Modifier.fillMaxWidth()) {
+            // sized from the width: two dials need 244dp at full size, a 320dp phone leaves ~224dp here
+            val dialSize = minOf(116.dp, (maxWidth - 12.dp) / 2)
+            val drumWidth = minOf(36.dp, (maxWidth - 40.dp) / drumCount.coerceAtLeast(1) - 4.dp).coerceAtLeast(22.dp)
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("1. Black numbers (whole m³)", color = Color(0xFF334155), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             Row(Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFCBD5E1)).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 (0 until drumCount).forEach { i ->
-                    Drum(digits[i]) { by -> digits = digits.mapIndexed { j, d -> if (j == i) ((d + by) % 10 + 10) % 10 else d } }
+                    Drum(digits[i], drumWidth) { by -> digits = digits.mapIndexed { j, d -> if (j == i) ((d + by) % 10 + 10) % 10 else d } }
                 }
                 Text(" m³", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
@@ -289,14 +296,14 @@ private fun MeterCard(m: JSONObject, onReading: (String) -> Unit, notMoved: Bool
                 (0 until dialCount).chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         row.forEach { k ->
-                            Dial(digits[drumCount + k], if (cubic) labels[k] else "decimal ${k + 1}") { v ->
+                            Dial(digits[drumCount + k], if (cubic) labels[k] else "decimal ${k + 1}", dialSize) { v ->
                                 digits = digits.mapIndexed { j, d -> if (j == drumCount + k) v else d }
                             }
                         }
                     }
                 }
             }
-        }
+        } } }
         Text("Reading: ${reading.toPlainString()} $unit", color = AjiriwaColors.TextPrimary, fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold, fontSize = 16.sp)
         if (last == null) {
@@ -320,23 +327,23 @@ private fun MeterCard(m: JSONObject, onReading: (String) -> Unit, notMoved: Bool
 }
 
 @Composable
-private fun Drum(d: Int, bump: (Int) -> Unit) {
+private fun Drum(d: Int, width: androidx.compose.ui.unit.Dp = 36.dp, bump: (Int) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 2.dp)) {
         Text("▲", color = Color(0xFF475569), fontSize = 16.sp, modifier = Modifier.clickable { bump(1) }.padding(6.dp))
         Box(
-            Modifier.width(36.dp).height(48.dp).clip(RoundedCornerShape(4.dp))
+            Modifier.width(width).height(width * 4 / 3).clip(RoundedCornerShape(4.dp))
                 .background(Brush.verticalGradient(listOf(Color.Black, Color(0xFF262626), Color.Black)))
                 .clickable { bump(1) },
             contentAlignment = Alignment.Center,
-        ) { Text("$d", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace) }
+        ) { Text("$d", color = Color.White, fontSize = (28 * width.value / 36).sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace) }
         Text("▼", color = Color(0xFF475569), fontSize = 16.sp, modifier = Modifier.clickable { bump(-1) }.padding(6.dp))
     }
 }
 
 /** One small red-needle dial, 0 at the top, numbers clockwise like the real meter. */
 @Composable
-private fun Dial(value: Int, label: String, onPick: (Int) -> Unit) {
-    val size = 116.dp
+private fun Dial(value: Int, label: String, size: androidx.compose.ui.unit.Dp = 116.dp, onPick: (Int) -> Unit) {
+    val k = size.value / 116f   // everything inside scales with the dial
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(size).clip(CircleShape).background(Color.White).border(2.dp, Color(0xFF94A3B8), CircleShape)) {
             Canvas(Modifier.fillMaxSize()) {
@@ -349,19 +356,20 @@ private fun Dial(value: Int, label: String, onPick: (Int) -> Unit) {
             }
             (0..9).forEach { n ->
                 val a = (n / 10.0) * 2 * PI - PI / 2
-                val r = 41.0
+                val r = 41.0 * k
                 val picked = n == value
                 Box(
-                    Modifier.align(Alignment.Center).offset((cos(a) * r).dp, (sin(a) * r).dp).size(26.dp).clip(CircleShape)
+                    Modifier.align(Alignment.Center).offset((cos(a) * r).dp, (sin(a) * r).dp).size((26 * k).coerceAtLeast(22f).dp).clip(CircleShape)
                         .background(if (picked) Color(0xFFFEE2E2) else Color.Transparent)
                         .clickable { onPick(n) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("$n", color = if (picked) Color(0xFFB91C1C) else Color(0xFF0F172A),
-                        fontWeight = if (picked) FontWeight.ExtraBold else FontWeight.Medium, fontSize = 14.sp)
+                        fontWeight = if (picked) FontWeight.ExtraBold else FontWeight.Medium, fontSize = (14 * k).coerceAtLeast(11f).sp)
                 }
             }
         }
-        Text(label, color = Color(0xFFB91C1C), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp))
+        Text(label, color = Color(0xFFB91C1C), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            modifier = Modifier.padding(top = 2.dp).widthIn(max = size + 8.dp))
     }
 }

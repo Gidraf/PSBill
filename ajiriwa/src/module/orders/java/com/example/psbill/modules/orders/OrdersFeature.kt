@@ -8,6 +8,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.psbill.core.FeatureModule
@@ -20,7 +24,20 @@ object OrdersFeature : FeatureModule() {
     override val nav = NavModule("orders", "Orders", Icons.Filled.ShoppingCart, listOf("orders"), order = 10)
 
     @Composable
-    override fun Content(ctx: ModuleContext) = OrdersScreen(ctx.server, ctx.headers)
+    override fun Content(ctx: ModuleContext) {
+        var tab by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
+        androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize()) {
+            androidx.compose.material3.TabRow(selectedTabIndex = tab, containerColor = com.example.psbill.ui.theme.AjiriwaColors.Canvas,
+                contentColor = com.example.psbill.ui.theme.AjiriwaColors.Primary) {
+                listOf("Orders", "My deliveries").forEachIndexed { i, t ->
+                    androidx.compose.material3.Tab(selected = tab == i, onClick = { tab = i }, text = { androidx.compose.material3.Text(t) })
+                }
+            }
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.weight(1f).fillMaxWidth()) {
+                if (tab == 0) OrdersScreen(ctx.server, ctx.headers) else MyDeliveries(ctx)
+            }
+        }
+    }
 
     /** Delivery tracking needs location; ask once after sign-in. */
     @Composable
