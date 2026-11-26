@@ -1105,7 +1105,10 @@ class MainActivity : ComponentActivity() {
                 },
             ) { contentModifier ->
                 Column(modifier = contentModifier) {
-                    com.example.psbill.ui.AlertsBanner(onOpen = { k -> if (drawerItems.any { it.key == k }) selectedKey = k })
+                    com.example.psbill.ui.AlertsBanner(onOpen = { k ->
+                        // a screen this login does not have falls back to the dashboard, so the button never does nothing
+                        selectedKey = listOf(k, "overview").firstOrNull { c -> drawerItems.any { it.key == c } } ?: selectedKey
+                    })
                     com.example.psbill.ui.UpdateBanner()
                     if (selectedKey == "kiosk" && (!wsConnected || disconnectedTvNames.isNotEmpty())) {
                         val hasDisconnectedTvs = disconnectedTvNames.isNotEmpty()
@@ -1203,7 +1206,7 @@ class MainActivity : ComponentActivity() {
                             com.example.psbill.core.CompiledModules.feature(selectedKey)?.Content(moduleCtx)
                         "wifi" -> if (com.example.psbill.core.CompiledModules.has("wifi")) WifiBillingTab(serverDomain, getHeaders)
                         "device_sync" -> com.example.psbill.ui.DeviceSyncScreen(moduleCtx)
-                        "apps" -> com.example.psbill.ui.AppsScreen()
+                        "apps" -> com.example.psbill.ui.AppsScreen(owner = staffRole != "attendant")
                         "settings" -> SettingsTab(
                             partner = partnerId,
                             serverDomain = serverDomain,

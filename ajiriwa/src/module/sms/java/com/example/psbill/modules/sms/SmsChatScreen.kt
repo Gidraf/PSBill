@@ -29,8 +29,10 @@ fun SmsChatScreen(
     modifier: Modifier = Modifier,
     /** Queue a reply to [sender]; call the callback with true once accepted. Null hides the reply bar. */
     onSend: ((text: String, done: (Boolean) -> Unit) -> Unit)? = null,
+    /** Text to start with (another app asked to send it). */
+    draft: String = "",
 ) {
-    var reply by remember { mutableStateOf("") }
+    var reply by remember(sender, draft) { mutableStateOf(draft) }
     var sending by remember { mutableStateOf(false) }
     var conversationTab by remember { mutableStateOf("ALL") } // ALL, CHATS, CALLS
     val listState = rememberLazyListState()

@@ -54,7 +54,8 @@ import kotlin.math.sin
  * Morning check (server: app/services/daily_check.py). Until every water meter is read today (and a worked day's
  * cash is counted), the whole app is covered by this screen. The meter is drawn like the real one: black drums =
  * whole m3, four red dials x0.1 / x0.01 / x0.001 / x0.0001 m3 (100 L, 10 L, 1 L, 0.1 L): tap the number the red
- * needle points at. Litres since the last reading are worked out as they turn the dials. Owners may skip a day.
+ * needle points at. Litres since the last reading are worked out as they turn the dials. Nobody can skip it (owner 2026-11-26),
+ * not even the owner; offline the last answer is kept and the phone stays locked until it can check.
  * After closing time a small bar asks for the cash count.
  */
 private object DailyApi {
@@ -80,10 +81,14 @@ private const val PREFS = "daily_check"
 internal fun DailyCheckGate(ctx: ModuleContext) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE) }
-    var status by remember { mutableStateOf<JSONObject?>(null) }
+    // the last answer is kept, so a phone that is offline (or just opened) stays locked instead of letting work start
+    var status by remember { mutableStateOf(prefs.getString("status", null)?.let { runCatching { JSONObject(it) }.getOrNull() }) }
+    var fresh by remember { mutableStateOf(false) }
+    var netError by remember { mutableStateOf<String?>(null) }
     var tick by remember { mutableIntStateOf(0) }
     var cashOpen by remember { mutableStateOf(false) }
     var reminderHiddenUntil by remember { mutableLongStateOf(0L) }
+    fun keep(j: JSONObject) { status = j; fresh = true; netError = null; prefs.edit().putString("status", j.toString()).apply() }
 
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {
@@ -93,27 +98,24 @@ internal fun DailyCheckGate(ctx: ModuleContext) {
     }
     LaunchedEffect(tick, ctx.partnerId) {
         while (true) {
-            runCatching { DailyApi.status(ctx) }.onSuccess { status = it }
-            // a locked screen asks more often (another phone may have done it)
-            delay(if (status?.optBoolean("blocking") == true) 60_000L else 5 * 60_000L)
+            runCatching { DailyApi.status(ctx) }.onSuccess { keep(it) }.onFailure { netError = it.message }
+            // a locked screen asks more often (another phone may have done it); offline retries every 15 s
+            delay(when { !fresh -> 15_000L; status?.optBoolean("blocking") == true -> 60_000L; else -> 5 * 60_000L })
         }
     }
     val s = status ?: return
     if (!s.optBoolean("required")) return
-    val day = s.optString("day")
-    val skipped = prefs.getString("skipped", "") == day
-    if (s.optBoolean("blocking") && !skipped) {
-        DailyCheckScreen(ctx, s, cashOnly = false, onSaved = { status = it }, onSkip = {
-            prefs.edit().putString("skipped", day).apply()
-            ActivityLog.log("daily_check_skipped", detail = JSONObject().put("day", day), context = context)
-            tick++
-        }, onClose = null)
+    // owner 2026-11-26: never tolerant. No skip; a new day (or an old answer from yesterday) locks until it is read.
+    // (only while the server has not answered: a fresh answer wins over a wrong phone clock)
+    val newDay = !fresh && s.optString("day") != todayNairobi()
+    if (s.optBoolean("blocking") || newDay) {
+        if (!fresh) WaitingForCheck(netError) { tick++ }
+        else DailyCheckScreen(ctx, s, cashOnly = false, onSaved = { keep(it) }, onClose = null)
         return
     }
     val cash = s.optJSONObject("cash")
     if (cash != null && cashOpen) {
-        DailyCheckScreen(ctx, s, cashOnly = true, onSaved = { status = it; cashOpen = false }, onSkip = null,
-            onClose = { cashOpen = false })
+        DailyCheckScreen(ctx, s, cashOnly = true, onSaved = { keep(it); cashOpen = false }, onClose = { cashOpen = false })
         return
     }
     if (cash != null && System.currentTimeMillis() > reminderHiddenUntil) {
@@ -126,6 +128,31 @@ internal fun DailyCheckGate(ctx: ModuleContext) {
                 TextButton(onClick = { reminderHiddenUntil = System.currentTimeMillis() + 60 * 60_000L }) { Text("Later", color = Color(0xFFBFDBFE)) }
                 Button(onClick = { cashOpen = true }) { Text("Count now") }
             }
+        }
+    }
+}
+
+private fun todayNairobi(): String = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+    .apply { timeZone = java.util.TimeZone.getTimeZone("Africa/Nairobi") }.format(java.util.Date())
+
+/** Locked, but the server could not be asked yet (offline, or the first minute of a new day). */
+@Composable
+private fun WaitingForCheck(error: String?, retry: () -> Unit) {
+    BackHandler(enabled = true) {}
+    Box(
+        Modifier.fillMaxSize().background(AjiriwaColors.Canvas)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(Modifier.systemBarsPadding().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("💧", fontSize = 48.sp)
+            Text("Morning check", color = AjiriwaColors.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text("Read the water meter before you start. The app opens once it is saved.",
+                color = AjiriwaColors.TextSecondary, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            if (error != null) Text("No connection: turn on data or WiFi.", color = AjiriwaColors.Danger, fontSize = 13.sp)
+            else CircularProgressIndicator(Modifier.size(28.dp))
+            Button(onClick = retry, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Try again", fontSize = 16.sp) }
         }
     }
 }
@@ -143,7 +170,7 @@ private fun niceDay(iso: String): String = runCatching {
 @Composable
 private fun DailyCheckScreen(
     ctx: ModuleContext, status: JSONObject, cashOnly: Boolean,
-    onSaved: (JSONObject) -> Unit, onSkip: (() -> Unit)?, onClose: (() -> Unit)?,
+    onSaved: (JSONObject) -> Unit, onClose: (() -> Unit)?,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -159,10 +186,16 @@ private fun DailyCheckScreen(
     var errors by remember { mutableStateOf<List<String>>(emptyList()) }
 
     fun last(m: JSONObject) = m.optDouble("last_reading").takeIf { !it.isNaN() }
+    // a reading lower than the last one is never sent (the server refuses it too, unless the meter rolled over)
+    val lower = meters.filter { m ->
+        val r = readings[m.getString("item_id")]?.toBigDecimalOrNull()
+        val l = last(m)?.toBigDecimal()
+        r != null && l != null && r < l && m.optDouble("rollover").isNaN()
+    }
     val missing = meters.filter { m ->
         val r = readings[m.getString("item_id")]?.toBigDecimalOrNull()
         val l = last(m)?.toBigDecimal()
-        r == null || (l != null && r.compareTo(l) == 0 && notMoved[m.getString("item_id")] != true)
+        r == null || m in lower || (l != null && r.compareTo(l) == 0 && notMoved[m.getString("item_id")] != true)
     }
     val cashMissing = cash != null && (cash.optBoolean("blocking") || cashOnly) && cashText.toDoubleOrNull() == null
     val ready = missing.isEmpty() && !cashMissing
@@ -229,13 +262,11 @@ private fun DailyCheckScreen(
             ) { Text(if (saving) "Saving..." else "Save and continue", fontSize = 16.sp) }
             if (!ready) Text(
                 when {
+                    lower.isNotEmpty() -> "${lower.joinToString { it.optString("name") }}: the reading is lower than the last one. Check every number."
                     missing.isNotEmpty() -> "Set the meter for ${missing.joinToString { it.optString("name") }}."
                     else -> "Enter the cash counted."
                 }, color = AjiriwaColors.TextMuted, fontSize = 12.sp,
             )
-            if (onSkip != null && status.optBoolean("can_skip")) TextButton(onClick = onSkip, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text("Skip for today (owner)", color = AjiriwaColors.TextMuted)
-            }
             if (onClose != null) TextButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Not now") }
         }
     }

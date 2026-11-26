@@ -22,7 +22,9 @@ object StaffAlertNotifier {
     /** Which app screen fixes this alert. */
     fun screenFor(kind: String?): String = when (kind) {
         "SMS_UNSENT" -> "sms"
-        else -> "stock"
+        "VALUE_PLAN_DELIVER" -> "orders"
+        "VALUE_APPROVE", "VALUE_REPLY", "VALUE_REWARD", "VALUE_PLAN_SIGNED" -> "customers"
+        else -> if (kind?.startsWith("WA_") == true) "overview" else "stock"
     }
 
     private fun channel(context: Context) {

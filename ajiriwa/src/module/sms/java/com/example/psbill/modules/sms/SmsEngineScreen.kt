@@ -190,6 +190,15 @@ fun SmsEngineScreen(
 
     // Chat Details State (Links SMS + Call Logs)
     var selectedChatSender by remember { mutableStateOf<String?>(null) }
+    var chatDraft by remember { mutableStateOf("") }
+    // "send SMS" from Contacts / a link / another app (we are the default SMS app): open that chat here
+    val composeAsk by com.example.psbill.SmsCompose.pending.collectAsState()
+    LaunchedEffect(composeAsk) {
+        composeAsk?.let { (num, body) ->
+            if (num.isNotBlank()) { selectedChatSender = num; chatDraft = body }
+            com.example.psbill.SmsCompose.pending.value = null
+        }
+    }
     val selectedChatMessages = remember(selectedChatSender, inboxMessages, deviceSms, deviceCallLogs) {
         if (selectedChatSender == null) emptyList()
         else {
@@ -224,7 +233,8 @@ fun SmsEngineScreen(
         SmsChatScreen(
             sender = selectedChatSender!!,
             messages = selectedChatMessages,
-            onBack = { selectedChatSender = null },
+            onBack = { selectedChatSender = null; chatDraft = "" },
+            draft = chatDraft,
             onSend = { text, done ->
                 val payload = JSONObject().apply {
                     put("recipient_phone", selectedChatSender!!)

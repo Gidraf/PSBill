@@ -63,8 +63,9 @@ object AppModules {
      * Filter to modules visible for this partner/role combo.
      */
     /** Drawer keys an attendant sees (owner 2026-11-26: proper privileges): the day's work, no owner screens
-     *  (Dashboard, Catalogue, Marketing, Sync & tracking, Phone apps). The server's staff_fence is the real guard. */
-    val attendantKeys = setOf("stock", "orders", "customers", "sms", "printing", "properties", "kiosk", "wifi")
+     *  (Dashboard, Catalogue, Marketing, Sync & tracking). "apps" shows them only the apps the owner allowed
+     *  (PhoneLock), without the lock controls. The server's staff_fence is the real guard. */
+    val attendantKeys = setOf("stock", "orders", "customers", "sms", "printing", "properties", "kiosk", "wifi", "apps")
 
     fun partnerVisible(allowed: Set<String>, canSendSms: Boolean): List<NavModule> {
         return partnerNav.filter { nav ->

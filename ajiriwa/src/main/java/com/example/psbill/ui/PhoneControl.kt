@@ -10,7 +10,9 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -23,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -34,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.example.psbill.core.ActivityLog
 import com.example.psbill.core.AppUpdater
 import com.example.psbill.core.DeviceAgent
+import com.example.psbill.core.PhoneLock
 import com.example.psbill.core.StaffAlertNotifier
 import com.example.psbill.ui.theme.AjiriwaColors
 import kotlinx.coroutines.Dispatchers
@@ -113,33 +117,95 @@ fun UpdateBanner() {
 
 // ── Attendant alerts ────────────────────────────────────────────────────────
 
-/** Open alerts (buy SMS bundle, read the meter, pump, restock); tap to go fix it. */
+/** What one alert kind looks like and what its button does (kinds come from staff_alerts.py on the server). */
+private data class AlertLook(val icon: String, val action: String, val screen: String)
+
+private fun lookOf(kind: String): AlertLook = when {
+    kind == "SMS_UNSENT" -> AlertLook("✉️", "Buy SMS bundle", "sms")
+    kind == "METER_READING" || kind == "DAILY_METER" -> AlertLook("💧", "Read the meter", "stock")
+    kind == "READY_LOW" -> AlertLook("🚰", "Refill now", "stock")
+    kind == "STORAGE_LOW" -> AlertLook("📦", "Restock", "stock")
+    kind == "NEGATIVE_STOCK" -> AlertLook("⚠️", "Fix the stock", "stock")
+    kind == "DAILY_CLOSE" -> AlertLook("💵", "Count the cash", "stock")
+    kind == "VALUE_PLAN_DELIVER" -> AlertLook("🚚", "See deliveries", "orders")
+    kind == "VALUE_APPROVE" || kind == "VALUE_REPLY" -> AlertLook("💬", "Check messages", "customers")
+    kind == "VALUE_REWARD" -> AlertLook("🎁", "Give the reward", "customers")
+    kind.startsWith("VALUE_") -> AlertLook("🤝", "Open customers", "customers")
+    kind.startsWith("WA_") -> AlertLook("📱", "Check WhatsApp", "overview")
+    else -> AlertLook("🔔", "Open", StaffAlertNotifier.screenFor(kind))
+}
+
+private fun sevRank(a: JSONObject) = when (a.optString("severity")) { "CRITICAL" -> 0; "WARNING" -> 1; else -> 2 }
+
+/**
+ * Things to do now (buy SMS bundle, read the meter, refill, restock...). One slim bar on every screen: the most urgent
+ * item and how many there are; tap it for a sheet of cards, each with a plain button that goes to the fix.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlertsBanner(onOpen: (String) -> Unit) {
     val agent by DeviceAgent.state.collectAsState()
-    var expanded by remember { mutableStateOf(false) }
-    val alerts = agent.alerts
+    var open by remember { mutableStateOf(false) }
+    val alerts = remember(agent.alerts) { agent.alerts.sortedBy(::sevRank) }
     if (alerts.isEmpty()) return
-    val critical = alerts.any { it.optString("severity") == "CRITICAL" }
-    Surface(color = if (critical) AjiriwaColors.ErrorContainer else androidx.compose.ui.graphics.Color(0xFF4A3410),
-        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-            Text(
-                if (alerts.size == 1) alerts[0].optString("title") else "${alerts.size} things need attention" + if (expanded) "" else " — tap to see",
-                color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
-            if (expanded || alerts.size == 1) {
-                alerts.take(8).forEach { a ->
-                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            if (alerts.size > 1) Text(a.optString("title"), color = androidx.compose.ui.graphics.Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text(a.optString("message"), color = androidx.compose.ui.graphics.Color(0xFFFFE0B2), fontSize = 12.sp)
+    val top = alerts.first()
+    val critical = sevRank(top) == 0
+    val tint = if (critical) AjiriwaColors.Danger else AjiriwaColors.Warning
+    fun go(a: JSONObject) {
+        ActivityLog.log("alert_open", detail = JSONObject().put("kind", a.optString("kind")))
+        open = false
+        onOpen(lookOf(a.optString("kind")).screen)
+    }
+    Surface(
+        color = tint.copy(alpha = 0.16f), shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, tint.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clickable { open = true },
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(lookOf(top.optString("kind")).icon, fontSize = 22.sp)
+            Column(Modifier.weight(1f)) {
+                Text(top.optString("title"), color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (alerts.size == 1) "Tap to fix" else "+${alerts.size - 1} more to do · tap to see all",
+                    color = AjiriwaColors.TextSecondary, fontSize = 12.sp)
+            }
+            Surface(color = tint, shape = RoundedCornerShape(50)) {
+                Text("${alerts.size}", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp))
+            }
+        }
+    }
+    if (open) {
+        ModalBottomSheet(onDismissRequest = { open = false }, containerColor = AjiriwaColors.SurfaceAlt) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(if (alerts.size == 1) "1 thing to do" else "${alerts.size} things to do", color = AjiriwaColors.TextPrimary,
+                    fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Most urgent first. Tap the button to go and fix it.", color = AjiriwaColors.TextMuted, fontSize = 12.sp)
+                alerts.take(20).forEach { a ->
+                    val look = lookOf(a.optString("kind"))
+                    val c = when (sevRank(a)) { 0 -> AjiriwaColors.Danger; 1 -> AjiriwaColors.Warning; else -> AjiriwaColors.Primary }
+                    Card(colors = CardDefaults.cardColors(containerColor = AjiriwaColors.Surface), shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.height(IntrinsicSize.Min)) {
+                            Box(Modifier.width(5.dp).fillMaxHeight().background(c))
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(look.icon, fontSize = 20.sp)
+                                    Text(a.optString("title"), color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp, modifier = Modifier.weight(1f))
+                                    if (sevRank(a) == 0) Text("URGENT", color = c, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
+                                a.optString("message").takeIf { it.isNotBlank() }?.let {
+                                    Text(it, color = AjiriwaColors.TextSecondary, fontSize = 13.sp)
+                                }
+                                Button(onClick = { go(a) }, colors = ButtonDefaults.buttonColors(containerColor = c),
+                                    modifier = Modifier.fillMaxWidth().height(44.dp)) {
+                                    Text(look.action, color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
-                        TextButton(onClick = {
-                            ActivityLog.log("alert_open", detail = JSONObject().put("kind", a.optString("kind")))
-                            onOpen(StaffAlertNotifier.screenFor(a.optString("kind")))
-                        }) { Text("Fix", color = androidx.compose.ui.graphics.Color.White) }
                     }
                 }
             }
@@ -181,14 +247,104 @@ private fun Drawable.toBitmapSafe(): ImageBitmap? = runCatching {
     b.asImageBitmap()
 }.getOrNull()
 
-/** The phone's apps, opened through Ajiriwa so every launch is logged (works as the Home screen). */
+/** One line of the phone set-up card: done or not, and a button when it is not. */
 @Composable
-fun AppsScreen() {
+private fun SetupRow(done: Boolean, label: String, action: String? = null, onAction: (() -> Unit)? = null) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text(if (done) "✅" else "⭕", fontSize = 16.sp)
+        Text(label, color = if (done) AjiriwaColors.TextPrimary else AjiriwaColors.TextSecondary, fontSize = 14.sp,
+            modifier = Modifier.weight(1f).padding(start = 8.dp))
+        if (!done && action != null && onAction != null) TextButton(onClick = onAction) { Text(action) }
+    }
+}
+
+/** Owner: make this the business phone (like the TV app): Ajiriwa is Home + the SMS app, only allowed apps open. */
+@Composable
+private fun PhoneSetupCard(onChanged: () -> Unit) {
+    val context = LocalContext.current
+    var v by remember { mutableIntStateOf(0) }
+    val refresh = { v++; onChanged() }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) v++ }
+        lifecycle.lifecycle.addObserver(obs)
+        onDispose { lifecycle.lifecycle.removeObserver(obs) }
+    }
+    val owner = remember(v) { PhoneLock.isDeviceOwner(context) }
+    val home = remember(v) { PhoneLock.isHome(context) }
+    val sms = remember(v) { PhoneLock.isDefaultSms(context) }
+    val locked = remember(v) { PhoneLock.locked(context) }
+    val appsLocked = remember(v) { PhoneLock.appsLocked(context) }
+    var msg by remember { mutableStateOf<String?>(null) }
+    var confirmRelease by remember { mutableStateOf(false) }
+    val launch = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { refresh() }
+    fun open(i: Intent?) { i?.let { runCatching { launch.launch(it) }.onFailure { e -> msg = e.message } } }
+
+    Card(colors = CardDefaults.cardColors(containerColor = AjiriwaColors.Surface), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Business phone", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                val tag = when { locked && appsLocked -> "Fully locked"; locked -> "Locked"; else -> "Open" }
+                Surface(color = if (locked) AjiriwaColors.Success.copy(alpha = 0.2f) else AjiriwaColors.SurfaceHigh, shape = RoundedCornerShape(50)) {
+                    Text(tag, color = if (locked) AjiriwaColors.Success else AjiriwaColors.TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
+                }
+            }
+            Text("Like the TV app: Home always opens Ajiriwa, SMS only go through Ajiriwa, and staff open only the apps you allow.",
+                color = AjiriwaColors.TextMuted, fontSize = 12.sp)
+            SetupRow(home, "Ajiriwa is the home screen", "Set") { open(PhoneLock.askHomeRole(context)) }
+            SetupRow(sms, "Ajiriwa is the SMS app", "Set") { open(PhoneLock.askSmsRole(context)) }
+            SetupRow(owner, "Full control (device owner)")
+            if (!owner) {
+                Text("For full control (Home and SMS cannot be changed, no uninstall, other apps blocked), connect the phone to a " +
+                    "computer once and run the line below. Remove all accounts (Google, WhatsApp backup accounts) from the phone first.",
+                    color = AjiriwaColors.TextSecondary, fontSize = 12.sp)
+                Surface(color = AjiriwaColors.Canvas, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().clickable {
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("adb", PhoneLock.ADB_COMMAND)); msg = "Copied"
+                }) {
+                    Text(PhoneLock.ADB_COMMAND, color = AjiriwaColors.Primary, fontSize = 11.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.padding(10.dp))
+                }
+            } else {
+                if (!locked) Button(onClick = {
+                    val p = PhoneLock.lock(context); msg = if (p.isEmpty()) "Phone locked to Ajiriwa" else p.joinToString("\n"); refresh()
+                }, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Lock this phone to Ajiriwa") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Only allowed apps open", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("Tap the star on an app below to allow it. Others are greyed out.", color = AjiriwaColors.TextMuted, fontSize = 12.sp)
+                    }
+                    Switch(checked = appsLocked, onCheckedChange = { on ->
+                        val p = PhoneLock.applyAppLock(context, on); msg = p.takeIf { it.isNotEmpty() }?.joinToString("\n"); refresh()
+                    })
+                }
+                if (locked || appsLocked) OutlinedButton(onClick = { confirmRelease = true }, modifier = Modifier.fillMaxWidth()) { Text("Unlock the phone") }
+            }
+            msg?.let { Text(it, color = AjiriwaColors.Warning, fontSize = 12.sp) }
+        }
+    }
+    if (confirmRelease) AlertDialog(
+        onDismissRequest = { confirmRelease = false },
+        title = { Text("Unlock this phone?") },
+        text = { Text("Other home screens, SMS apps and every app will work again until you lock it again.") },
+        confirmButton = { TextButton(onClick = { PhoneLock.release(context); confirmRelease = false; msg = "Unlocked"; refresh() }) { Text("Unlock") } },
+        dismissButton = { TextButton(onClick = { confirmRelease = false }) { Text("Cancel") } },
+    )
+}
+
+/**
+ * The phone's apps, opened through Ajiriwa so every launch is logged (works as the Home screen). The owner sees the
+ * business-phone set-up and stars the apps staff may use; an attendant sees only the starred apps.
+ */
+@Composable
+fun AppsScreen(owner: Boolean = true) {
     val context = LocalContext.current
     var apps by remember { mutableStateOf<List<PhoneApp>>(emptyList()) }
     var query by remember { mutableStateOf("") }
-    var launcherOn by remember { mutableStateOf(LauncherMode.enabled(context)) }
-    LaunchedEffect(Unit) {
+    var allowed by remember { mutableStateOf(PhoneLock.allowed(context)) }
+    var reload by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reload) {
         apps = withContext(Dispatchers.IO) {
             val pm = context.packageManager
             val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -200,34 +356,37 @@ fun AppsScreen() {
         }
     }
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Card(colors = CardDefaults.cardColors(containerColor = AjiriwaColors.Surface), modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Use Ajiriwa as the home screen", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.SemiBold)
-                    Text("The phone opens Ajiriwa on Home; apps open from here and every operation is logged (offline too).",
-                        color = AjiriwaColors.TextMuted, fontSize = 12.sp)
-                }
-                Switch(checked = launcherOn, onCheckedChange = { LauncherMode.set(context, it); launcherOn = it })
-            }
-        }
+        if (owner) PhoneSetupCard(onChanged = { allowed = PhoneLock.allowed(context); reload++ })
+        else Text("Apps you can use", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
         OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true, label = { Text("Search apps") }, modifier = Modifier.fillMaxWidth())
-        val shown = apps.filter { query.isBlank() || it.label.contains(query, true) }
+        val shown = apps.filter { (owner || it.pkg in allowed) && (query.isBlank() || it.label.contains(query, true)) }
+            .sortedByDescending { it.pkg in allowed }
+        if (!owner && shown.isEmpty()) Text("No apps allowed on this phone yet. Ask the owner.", color = AjiriwaColors.TextMuted, fontSize = 13.sp)
         LazyVerticalGrid(columns = GridCells.Adaptive(84.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
             items(shown, key = { it.pkg + it.activity }) { app ->
-                Column(
-                    Modifier.clickable {
-                        ActivityLog.log("app_launch", detail = JSONObject().put("package", app.pkg).put("label", app.label), context = context)
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                                .setClassName(app.pkg, app.activity).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        }
-                    }.padding(4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (app.icon != null) Image(app.icon, app.label, Modifier.size(48.dp))
-                    else Surface(shape = RoundedCornerShape(12.dp), color = AjiriwaColors.SurfaceHigh, modifier = Modifier.size(48.dp)) {}
-                    Text(app.label, color = AjiriwaColors.TextSecondary, fontSize = 11.sp, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
+                val ok = app.pkg in allowed
+                Box {
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable {
+                            ActivityLog.log("app_launch", detail = JSONObject().put("package", app.pkg).put("label", app.label), context = context)
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                                    .setClassName(app.pkg, app.activity).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }
+                        }.padding(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        val dim = if (owner && !ok && PhoneLock.appsLocked(context)) 0.35f else 1f
+                        if (app.icon != null) Image(app.icon, app.label, Modifier.size(48.dp), alpha = dim)
+                        else Surface(shape = RoundedCornerShape(12.dp), color = AjiriwaColors.SurfaceHigh, modifier = Modifier.size(48.dp)) {}
+                        Text(app.label, color = AjiriwaColors.TextSecondary, fontSize = 11.sp, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (owner) Text(if (ok) "★" else "☆", color = if (ok) AjiriwaColors.Warning else AjiriwaColors.TextMuted, fontSize = 18.sp,
+                        modifier = Modifier.align(Alignment.TopEnd).clickable {
+                            allowed = if (ok) allowed - app.pkg else allowed + app.pkg
+                            PhoneLock.setAllowed(context, allowed)
+                        }.padding(4.dp))
                 }
             }
         }
