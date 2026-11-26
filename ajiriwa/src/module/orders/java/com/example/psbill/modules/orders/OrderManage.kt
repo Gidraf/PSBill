@@ -52,6 +52,18 @@ internal fun orderCall(base: String, headers: Headers, path: String, method: Str
     })
 }
 
+/** Same codes as the backend's cash_sale.CANCEL_REASONS (OTHER needs a note). */
+internal val CANCEL_REASONS = listOf(
+    "CUSTOMER_CHANGED_MIND" to "Customer changed their mind",
+    "NOT_HOME" to "Customer not home / not reachable",
+    "DUPLICATE" to "Duplicate order",
+    "WRONG_ORDER" to "Wrong products or amount",
+    "OUT_OF_STOCK" to "Out of stock",
+    "PAID_ON_ANOTHER" to "Paid on another order",
+    "TEST" to "Test order",
+    "OTHER" to "Other (write why)",
+)
+
 private data class Line(val productId: String, val name: String, val qty: Int, val price: Double)
 
 /**
@@ -66,6 +78,8 @@ fun OrderManageDialog(base: String, headers: () -> Headers, order: JSONObject, o
     var detail by remember { mutableStateOf<JSONObject?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var cancelReason by remember { mutableStateOf("") }
+    var cancelNote by remember { mutableStateOf("") }
 
     fun reload() = orderCall(base, headers(), "/api/v1/shop/orders/$orderId", "GET", null) { ok, text, code ->
         if (ok) detail = runCatching { JSONObject(text) }.getOrNull()?.let { it.optJSONObject("order") ?: it }
@@ -92,6 +106,16 @@ fun OrderManageDialog(base: String, headers: () -> Headers, order: JSONObject, o
                     listOf("Items", "Payment", "Schedule", "Cancel").forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, fontSize = 12.sp) }) }
                 }
                 Text("Status: $status · KSh ${d.optString("amount")}", color = AjiriwaColors.TextSecondary, fontSize = 12.sp)
+                if (editable && (d.optJSONArray("item")?.length() ?: 0) > 0) {
+                    // One tap: the customer paid this order in cash -> paid + delivered (cash_sale with order_id)
+                    Button(enabled = !busy, onClick = {
+                        busy = true
+                        orderCall(base, headers(), "/api/v1/shop/orders/cash-sale", "POST",
+                            JSONObject().put("order_id", orderId)) { ok, t, c -> done(ok, t, c, "Paid cash, delivered") }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = AjiriwaColors.Success), modifier = Modifier.fillMaxWidth()) {
+                        Text("Paid cash - deliver")
+                    }
+                }
                 when (tab) {
                     0 -> ItemsEditor(base, headers, d, editable, busy) { items, reason ->
                         busy = true
@@ -113,10 +137,23 @@ fun OrderManageDialog(base: String, headers: () -> Headers, order: JSONObject, o
                     3 -> {
                         Text("Cancelling returns the stock taken by this order and tells the customer if status SMS are on.",
                             color = AjiriwaColors.TextSecondary, fontSize = 13.sp)
-                        Button(enabled = editable && !busy, onClick = {
+                        Text("Why is it cancelled?", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        CANCEL_REASONS.forEach { (code, label) ->
+                            Row(Modifier.fillMaxWidth().clickable { cancelReason = code }, verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = cancelReason == code, onClick = { cancelReason = code })
+                                Text(label, color = AjiriwaColors.TextPrimary, fontSize = 13.sp)
+                            }
+                        }
+                        OutlinedTextField(value = cancelNote, onValueChange = { cancelNote = it.take(300) },
+                            label = { Text(if (cancelReason == "OTHER") "Write why (required)" else "Note (optional)") },
+                            modifier = Modifier.fillMaxWidth())
+                        val reasonOk = cancelReason.isNotBlank() && (cancelReason != "OTHER" || cancelNote.trim().length >= 3)
+                        Button(enabled = editable && !busy && reasonOk, onClick = {
                             busy = true
                             orderCall(base, headers(), "/api/v1/shop/orders/$orderId/status", "PATCH",
-                                JSONObject().put("status", "CANCELLED")) { ok, t, c -> done(ok, t, c, "Order cancelled") }
+                                JSONObject().put("status", "CANCELLED").put("cancel_reason", cancelReason).apply {
+                                    if (cancelNote.isNotBlank()) put("cancel_note", cancelNote.trim())
+                                }) { ok, t, c -> done(ok, t, c, "Order cancelled") }
                         }, colors = ButtonDefaults.buttonColors(containerColor = AjiriwaColors.Danger), modifier = Modifier.fillMaxWidth()) {
                             Text("Cancel this order")
                         }

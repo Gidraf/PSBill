@@ -112,6 +112,7 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
     var stkPhone by remember { mutableStateOf("") }
     var showCreateOrderScreen by remember { mutableStateOf(false) }
     var manageOrder by remember { mutableStateOf<JSONObject?>(null) }
+    var showCashSale by remember { mutableStateOf(false) }
 
     if (showCreateOrderScreen) {
         CreateOrderScreen(
@@ -548,6 +549,7 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
         )
     }
 
+    if (showCashSale) CashSaleDialog(base, headers, onClose = { showCashSale = false }, onDone = { showCashSale = false; load() })
     manageOrder?.let { o ->
         OrderManageDialog(base, headers, o, onClose = { manageOrder = null }, onChanged = { load() })
     }
@@ -562,6 +564,14 @@ fun OrdersScreen(server: String, headers: () -> Headers, modifier: Modifier = Mo
         ) {
             SectionTitle("Order Items & Ledger", "$total total orders • Order dispatch & payment ledger.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = { showCashSale = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = AjiriwaColors.Success),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text("Cash sale", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
                 Button(
                     onClick = { showCreateOrderScreen = true },
                     colors = ButtonDefaults.buttonColors(containerColor = AjiriwaColors.PrimaryAccent),
