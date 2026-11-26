@@ -88,7 +88,8 @@ fun CreateOrderScreen(
     var isLocating by remember { mutableStateOf(false) }
 
     // Payment states
-    var paymentMethod by remember { mutableStateOf("STK") } // "STK" | "CASH"
+    // Staff orders are cash only (owner 2026-11-26): "Paid cash" settles them, M-Pesa payments are matched from the SMS
+    val paymentMethod = "CASH"
     var mpesaPhone by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
 
@@ -274,15 +275,10 @@ fun CreateOrderScreen(
                                         Text("+ New Customer", fontSize = 12.sp)
                                     }
 
-                                    TextButton(onClick = {
-                                        val walkIn = JSONObject().apply {
-                                            put("whatsappName", "Walk-in / Cash Customer")
-                                            put("whatsappNumber", "254000000000")
-                                            put("phone_number", "254000000000")
-                                        }
-                                        selectedCustomer = walkIn
+                                    TextButton(onClick = {   // an order needs a real customer; walk-ins are a Cash sale
+                                        Toast.makeText(context, "For a walk-in, use Cash sale on the Orders screen.", Toast.LENGTH_LONG).show()
                                     }) {
-                                        Text("Use Guest Walk-in")
+                                        Text("Walk-in?")
                                     }
                                 }
 
@@ -465,31 +461,12 @@ fun CreateOrderScreen(
 
                             HorizontalDivider()
 
-                            // Payment method selector
-                            Text("Payment Method", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(
-                                    selected = paymentMethod == "STK",
-                                    onClick = { paymentMethod = "STK" },
-                                    label = { Text("📱 M-Pesa STK Push", fontWeight = FontWeight.Bold) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                FilterChip(
-                                    selected = paymentMethod == "CASH",
-                                    onClick = { paymentMethod = "CASH" },
-                                    label = { Text("💵 Cash / Walk-in", fontWeight = FontWeight.Bold) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            if (paymentMethod == "STK") {
-                                OutlinedTextField(
-                                    value = mpesaPhone,
-                                    onValueChange = { mpesaPhone = it },
-                                    label = { Text("M-Pesa Number (254...)") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                            // Payment: cash only for staff orders (M-Pesa payments are matched from the SMS)
+                            Text("Payment: cash", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(
+                                "Tap Paid cash on the order when the money is in. M-Pesa payments are matched to orders automatically.",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
 
                             Spacer(modifier = Modifier.height(8.dp))
 
@@ -525,10 +502,7 @@ fun CreateOrderScreen(
                                         }
                                         put("items", itemsArr)
                                         put("notes", locationName)
-                                        put("pay_via_stk", paymentMethod == "STK")
-                                        if (paymentMethod == "STK" && mpesaPhone.isNotBlank()) {
-                                            put("mpesa_number", mpesaPhone)
-                                        }
+                                        put("payment_method", paymentMethod)
                                         if (capturedLat != null && capturedLng != null) {
                                             put("location_details", JSONObject().apply {
                                                 put("name", locationName.ifBlank { "GPS Landmark" })
