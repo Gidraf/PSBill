@@ -345,11 +345,19 @@ def auto_builds(head):
     marker = os.path.join(STATE_DIR, "auto-head")
     if open(marker).read().strip() == head if os.path.exists(marker) else False:
         return
+    ok = True
     for app in AUTO_APPS:
         # name the commit: the heartbeat may not have reported it yet, and CVPAP would answer with the old build
-        status, res = api("/api/v1/app-builds/worker/jobs", {"app": app, "modules": "all", "reason": "AUTO",
-                                                             "head_commit": head})
+        try:
+            status, res = api("/api/v1/app-builds/worker/jobs", {"app": app, "modules": "all", "reason": "AUTO",
+                                                                 "head_commit": head})
+        except Exception as e:
+            status, res = 0, {"error": str(e)}
+        ok = ok and status == 200
         log(f"auto build {app}: {res.get('status', status)}")
+    if not ok:   # CVPAP restarting (deploy = 502): try again on the next fetch instead of skipping this commit
+        log("auto builds not all queued; retrying next round")
+        return
     with open(marker, "w") as f:
         f.write(head)
 
