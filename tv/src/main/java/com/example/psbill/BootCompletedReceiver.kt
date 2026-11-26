@@ -23,6 +23,12 @@ class BootCompletedReceiver : BroadcastReceiver() {
             context.startService(serviceIntent)
         }
 
+        // Paused by the owner: the TV starts as a normal TV (its own home screen); the service keeps syncing.
+        if (RemoteControl.isPaused(context) && !RemoteControl.isRemoving(context)) {
+            RemoteControl.setHome(context, false)
+            return
+        }
+
         // Bring kiosk UI back immediately after boot/reboot/package-restart.
         val mainIntent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)

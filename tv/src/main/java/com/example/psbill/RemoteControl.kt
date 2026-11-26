@@ -19,9 +19,10 @@ import java.util.concurrent.TimeUnit
  *   "remote": {"paused": bool, "remove": bool, "message": "..."}
  *
  * Paused: PSBill lets go of the TV. No lock task, no lock screen, no watchdog, no console
- * cover; HOME opens PausedActivity, which offers TV settings, the apps list and the home
- * screen settings. KioskService keeps syncing, so "resume" from the dashboard brings the
- * lock screen back.
+ * cover, and PSBill stops being the Home app (.HomeAlias disabled, owner 2026-11-26: "hide the
+ * launcher and let the screen operate as normal"): HOME opens the TV's own home screen. PSBill is
+ * still in the apps row (it opens PausedActivity). KioskService keeps syncing, so "resume" from the
+ * dashboard or the staff app makes PSBill Home again and brings the lock screen back.
  * Remove: as paused, then PSBill clears its device-owner rights, tells the server
  * ("removing", which unlinks the screen and stops billing it) and opens the uninstall prompt.
  * Both are kept in plain prefs so they survive a reboot and an unlinked (tokenless) app.
@@ -64,6 +65,7 @@ object RemoteControl {
             paused -> "paused"
             else -> "running"
         }
+        setHome(ctx, !(paused || remove))   // every sync: an app update or reboot cannot leave it wrong
         when {
             remove && !wasRemoving -> {
                 letGo(ctx)
@@ -83,11 +85,51 @@ object RemoteControl {
         Log.i(TAG, "PSBill paused by the owner: releasing the screen")
         ctx.sendBroadcast(Intent("com.example.psbill.ACTION_UNLOCK").setPackage(ctx.packageName))
         if (ConsoleOffActivity.isOpen()) ConsoleOffActivity.close()
-        openPausedPage(ctx)
+        setHome(ctx, false)
+        if (isRemoving(ctx)) openPausedPage(ctx) else openTvHome(ctx)
+    }
+
+    private fun homeAlias(ctx: Context) = ComponentName(ctx, "com.example.psbill.HomeAlias")
+
+    /** PSBill is the Home app (on) or not (off: the TV's own launcher is Home). Device owner pins it. */
+    fun setHome(ctx: Context, on: Boolean) {
+        val pm = ctx.packageManager
+        val want = if (on) android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                   else android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        try {
+            if (pm.getComponentEnabledSetting(homeAlias(ctx)) == want) return
+            pm.setComponentEnabledSetting(homeAlias(ctx), want, android.content.pm.PackageManager.DONT_KILL_APP)
+            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val admin = ComponentName(ctx, AdminReceiver::class.java)
+            if (dpm.isDeviceOwnerApp(ctx.packageName)) {
+                dpm.clearPackagePersistentPreferredActivities(admin, ctx.packageName)
+                if (on) {
+                    val f = android.content.IntentFilter(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME); addCategory(Intent.CATEGORY_DEFAULT)
+                    }
+                    dpm.addPersistentPreferredActivity(admin, f, homeAlias(ctx))
+                }
+            }
+            Log.i(TAG, "PSBill home ${if (on) "on" else "off"}")
+        } catch (e: Exception) {
+            Log.e(TAG, "setHome($on) failed: ${e.message}")
+        }
+    }
+
+    /** The TV's own home screen (PSBill is not Home while paused). */
+    private fun openTvHome(ctx: Context) {
+        try {
+            ctx.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            Log.e(TAG, "tv home failed: ${e.message}")
+            openPausedPage(ctx)
+        }
     }
 
     private fun comeBack(ctx: Context) {
         Log.i(TAG, "PSBill resumed: back to the lock screen")
+        setHome(ctx, true)
         PausedActivity.closeIfOpen()
         try {
             ctx.startActivity(Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
