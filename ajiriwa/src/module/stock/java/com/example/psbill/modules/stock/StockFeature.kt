@@ -79,6 +79,10 @@ object StockFeature : FeatureModule() {
         suspend fun put(path: String, body: JSONObject) = call(Request.Builder().url("$base$path").put(body.toString().toRequestBody(json)))
     }
 
+    /** The morning meter reading + cash count lock (DailyCheckGate.kt). */
+    @Composable
+    override fun Gate(ctx: ModuleContext) = DailyCheckGate(ctx)
+
     @Composable
     override fun Content(ctx: ModuleContext) {
         val api = remember(ctx.server, ctx.partnerId) { Api(ctx) }

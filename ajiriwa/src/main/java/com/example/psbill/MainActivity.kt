@@ -1304,6 +1304,10 @@ class MainActivity : ComponentActivity() {
                 }
                 }
             }
+            // Locks drawn over the whole app while signed in (stock: the morning meter reading + cash count)
+            com.example.psbill.core.CompiledModules.features.forEach { feature ->
+                androidx.compose.runtime.key(feature.nav.key) { feature.Gate(moduleCtx) }
+            }
         }
     }
 

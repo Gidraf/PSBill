@@ -42,6 +42,10 @@ abstract class FeatureModule {
     @Composable
     open fun SessionEffects(ctx: ModuleContext) {}
 
+    /** Drawn over the whole app while signed in: a full-screen lock (e.g. the daily meter reading) or nothing. */
+    @Composable
+    open fun Gate(ctx: ModuleContext) {}
+
     /** Optional button in the top app bar. */
     @Composable
     open fun TopBarAction(ctx: ModuleContext) {}
