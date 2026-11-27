@@ -51,12 +51,13 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Morning check (server: app/services/daily_check.py). Until every water meter is read today (and a worked day's
- * cash is counted), the whole app is covered by this screen. The meter is drawn like the real one: black drums =
+ * Meter check (server: app/services/daily_check.py). A meter is due 24 h after its last reading; while one is due
+ * the whole app is covered by this screen. The meter is drawn like the real one: black drums =
  * whole m3, four red dials x0.1 / x0.01 / x0.001 / x0.0001 m3 (100 L, 10 L, 1 L, 0.1 L): tap the number the red
  * needle points at. Litres since the last reading are worked out as they turn the dials. Nobody can skip it (owner 2026-11-26),
  * not even the owner; offline the last answer is kept and the phone stays locked until it can check.
- * After closing time a small bar asks for the cash count.
+ * Cash is OPTIONAL and separate (owner 2026-11-27): after closing time (or for a worked day never counted) a small bar
+ * offers "Count cash" with the system's estimate (orders, M-Pesa, water metered); the meter screen never asks for cash.
  */
 private object DailyApi {
     private val json = "application/json; charset=utf-8".toMediaType()
@@ -105,10 +106,12 @@ internal fun DailyCheckGate(ctx: ModuleContext) {
     }
     val s = status ?: return
     if (!s.optBoolean("required")) return
-    // owner 2026-11-26: never tolerant. No skip; a new day (or an old answer from yesterday) locks until it is read.
-    // (only while the server has not answered: a fresh answer wins over a wrong phone clock)
-    val newDay = !fresh && s.optString("day") != todayNairobi()
-    if (s.optBoolean("blocking") || newDay) {
+    // owner 2026-11-26: never tolerant, no skip. While the server has not answered, a kept answer whose meter has come
+    // due (24 h after its last reading, by the phone clock) locks too; a fresh answer wins over a wrong phone clock.
+    val dueByClock = !fresh && s.optJSONArray("meters").objects().any { m ->
+        isoMillis(m.optString("next_due"))?.let { it <= System.currentTimeMillis() } ?: false
+    }
+    if (s.optBoolean("blocking") || dueByClock) {
         if (!fresh) WaitingForCheck(netError) { tick++ }
         else DailyCheckScreen(ctx, s, cashOnly = false, onSaved = { keep(it) }, onClose = null)
         return
@@ -118,22 +121,34 @@ internal fun DailyCheckGate(ctx: ModuleContext) {
         DailyCheckScreen(ctx, s, cashOnly = true, onSaved = { keep(it); cashOpen = false }, onClose = { cashOpen = false })
         return
     }
-    if (cash != null && System.currentTimeMillis() > reminderHiddenUntil) {
+    val skipped = prefs.getString("cash_skipped", null)
+    if (cash != null && cash.optString("day") != skipped && System.currentTimeMillis() > reminderHiddenUntil) {
+        val exp = cash.optJSONObject("estimate")?.optDouble("expected")?.takeIf { !it.isNaN() }
         Box(Modifier.fillMaxSize().navigationBarsPadding().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF1E3A8A)).padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Closing time: count the cash", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                TextButton(onClick = { reminderHiddenUntil = System.currentTimeMillis() + 60 * 60_000L }) { Text("Later", color = Color(0xFFBFDBFE)) }
-                Button(onClick = { cashOpen = true }) { Text("Count now") }
+                Column(Modifier.weight(1f)) {
+                    Text("Count the cash (optional)", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    if (exp != null) Text("System expects about ${money(exp)}", color = Color(0xFFBFDBFE), fontSize = 12.sp)
+                }
+                TextButton(onClick = {
+                    reminderHiddenUntil = System.currentTimeMillis() + 60 * 60_000L
+                    prefs.edit().putString("cash_skipped", cash.optString("day")).apply()
+                }) { Text("Skip", color = Color(0xFFBFDBFE)) }
+                Button(onClick = { cashOpen = true }) { Text("Count") }
             }
         }
     }
 }
 
-private fun todayNairobi(): String = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-    .apply { timeZone = java.util.TimeZone.getTimeZone("Africa/Nairobi") }.format(java.util.Date())
+/** "2026-11-27T06:00:00.123+00:00" -> epoch ms (server times are UTC; java.util for Android 5). */
+private fun isoMillis(iso: String?): Long? = runCatching {
+    if (iso.isNullOrBlank() || iso.length < 19) return null
+    java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(iso.substring(0, 19))!!.time
+}.getOrNull()
 
 /** Locked, but the server could not be asked yet (offline, or the first minute of a new day). */
 @Composable
@@ -147,7 +162,7 @@ private fun WaitingForCheck(error: String?, retry: () -> Unit) {
         Column(Modifier.systemBarsPadding().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("💧", fontSize = 48.sp)
-            Text("Morning check", color = AjiriwaColors.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text("Meter check", color = AjiriwaColors.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text("Read the water meter before you start. The app opens once it is saved.",
                 color = AjiriwaColors.TextSecondary, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             if (error != null) Text("No connection: turn on data or WiFi.", color = AjiriwaColors.Danger, fontSize = 13.sp)
@@ -175,8 +190,9 @@ private fun DailyCheckScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     BackHandler(enabled = true) { onClose?.invoke() }
-    val meters = remember(status) { status.optJSONArray("meters").objects().filter { !cashOnly && !it.optBoolean("done") } }
-    val cash = status.optJSONObject("cash")
+    val meters = remember(status) { status.optJSONArray("meters").objects().filter { !cashOnly && it.optBoolean("due", !it.optBoolean("done")) } }
+    val cash = if (cashOnly) status.optJSONObject("cash") else null
+    val est = cash?.optJSONObject("estimate")
     // keyed by the day, not the status object: the status refreshes every minute while the attendant is typing
     val dayKey = status.optString("day")
     val readings = remember(dayKey) { mutableStateMapOf<String, String>() }
@@ -197,7 +213,7 @@ private fun DailyCheckScreen(
         val l = last(m)?.toBigDecimal()
         r == null || m in lower || (l != null && r.compareTo(l) == 0 && notMoved[m.getString("item_id")] != true)
     }
-    val cashMissing = cash != null && (cash.optBoolean("blocking") || cashOnly) && cashText.toDoubleOrNull() == null
+    val cashMissing = cashOnly && cashText.toDoubleOrNull() == null
     val ready = missing.isEmpty() && !cashMissing
 
     Box(
@@ -208,22 +224,34 @@ private fun DailyCheckScreen(
         // edge-to-edge app: keep the title off the status bar, Save above the nav bar and the cash box above the keyboard
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(if (cashOnly) "Close the day" else "Morning check", color = AjiriwaColors.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(if (cashOnly) "Count the cash" else "Meter check", color = AjiriwaColors.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text(
-                if (cashOnly) "Count the cash in the drawer and enter it."
-                else "Before you start: read the water meter${if (meters.size > 1) "s" else ""}" +
-                    (if (cash?.optBoolean("blocking") == true) " and enter the cash counted on ${niceDay(cash.optString("day"))}" else "") + ".",
+                if (cashOnly) "Optional: count the notes and coins in the drawer. The system already estimates it."
+                else "Read the water meter${if (meters.size > 1) "s" else ""} - it is asked every 24 hours.",
                 color = AjiriwaColors.TextSecondary, fontSize = 14.sp,
             )
             meters.forEach { m ->
                 val id = m.getString("item_id")
                 MeterCard(m, onReading = { readings[id] = it }, notMoved = notMoved[id] == true, onNotMoved = { notMoved[id] = it })
             }
-            if (cash != null && (cashOnly || cash.optBoolean("blocking"))) {
+            if (cash != null) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AjiriwaColors.Surface).padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Cash for ${niceDay(cash.optString("day"))}", color = AjiriwaColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                    Text("Count all the notes and coins in the drawer.", color = AjiriwaColors.TextMuted, fontSize = 12.sp)
+                    val expected = est?.optDouble("expected")?.takeIf { !it.isNaN() }
+                    if (expected != null) {
+                        Text("System expects about ${money(expected)}", color = AjiriwaColors.Primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        val parts = buildList {
+                            est.optDouble("sales").takeIf { !it.isNaN() && it > 0 }?.let { add("orders ${money(it)}") }
+                            est.optDouble("water_value").takeIf { !it.isNaN() }?.let { v ->
+                                add("water ${"%,.0f".format(est.optDouble("litres") - est.optDouble("washing_litres", 0.0))} L = ${money(v)}")
+                            }
+                            est.optDouble("cash_on_orders").takeIf { !it.isNaN() && it > 0 }?.let { add("cash on orders ${money(it)}") }
+                        }
+                        if (parts.isNotEmpty()) Text(parts.joinToString(" · ") + " minus M-Pesa/bank", color = AjiriwaColors.TextMuted, fontSize = 12.sp)
+                        Text(if (est.optString("confidence") == "good") "Orders and water agree" else "Rough estimate",
+                            color = AjiriwaColors.TextMuted, fontSize = 12.sp)
+                    } else Text("Count all the notes and coins in the drawer.", color = AjiriwaColors.TextMuted, fontSize = 12.sp)
                     OutlinedTextField(cashText, { v -> cashText = v.filter { it.isDigit() || it == '.' } },
                         label = { Text("Cash counted (KES)") }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
@@ -231,6 +259,10 @@ private fun DailyCheckScreen(
                     if (mi > 0) Text("M-Pesa / bank received that day (from SMS): ${money(mi)}", color = AjiriwaColors.TextSecondary, fontSize = 12.sp)
                     cashText.toDoubleOrNull()?.let { c ->
                         Text("Total taken: ${money(c + mi)}", color = AjiriwaColors.Primary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        val expected = est?.optDouble("expected")?.takeIf { !it.isNaN() }
+                        if (expected != null && kotlin.math.abs(c - expected) > maxOf(50.0, expected * 0.03)) Text(
+                            "${money(kotlin.math.abs(c - expected))} ${if (c > expected) "more" else "less"} than the system expects",
+                            color = AjiriwaColors.Danger, fontSize = 12.sp)
                     }
                 }
             }
@@ -241,14 +273,14 @@ private fun DailyCheckScreen(
                     saving = true
                     scope.launch {
                         val body = JSONObject()
-                        body.put("readings", JSONArray().apply {
+                        if (!cashOnly) body.put("readings", JSONArray().apply {
                             meters.forEach { m ->
                                 val id = m.getString("item_id")
                                 put(JSONObject().put("item_id", id).put("reading", readings[id])
                                     .put("client_ref", "daily:${status.optString("day")}:$id:${UUID.randomUUID()}"))
                             }
                         })
-                        if (cash != null && cashText.isNotBlank()) body.put("cash", JSONObject().put("day", cash.optString("day")).put("amount", cashText))
+                        if (cashOnly && cash != null && cashText.isNotBlank()) body.put("cash", JSONObject().put("day", cash.optString("day")).put("amount", cashText))
                         runCatching { DailyApi.send(ctx, body) }.onSuccess { r ->
                             errors = r.optJSONArray("errors").objects().map { e -> (e.optString("name").takeIf { it.isNotBlank() }?.let { "$it: " } ?: "") + e.optString("error") }
                             r.optJSONArray("results").objects().mapNotNull { it.optString("message").takeIf { m -> m.isNotBlank() } }
@@ -259,7 +291,7 @@ private fun DailyCheckScreen(
                         saving = false
                     }
                 },
-            ) { Text(if (saving) "Saving..." else "Save and continue", fontSize = 16.sp) }
+            ) { Text(if (saving) "Saving..." else if (cashOnly) "Save cash count" else "Save and continue", fontSize = 16.sp) }
             if (!ready) Text(
                 when {
                     lower.isNotEmpty() -> "${lower.joinToString { it.optString("name") }}: the reading is lower than the last one. Check every number."
