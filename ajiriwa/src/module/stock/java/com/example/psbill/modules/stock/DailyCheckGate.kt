@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +23,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +57,9 @@ import kotlin.math.sin
  * Meter check (server: app/services/daily_check.py). A meter is due 24 h after its last reading; while one is due
  * the whole app is covered by this screen. The meter is drawn like the real one: black drums =
  * whole m3, four red dials x0.1 / x0.01 / x0.001 / x0.0001 m3 (100 L, 10 L, 1 L, 0.1 L): tap the number the red
- * needle points at. Litres since the last reading are worked out as they turn the dials. Nobody can skip it (owner 2026-11-26),
+ * needle points at, or turn the needle / roll a drum with a finger. Turning carries like the real meter
+ * (MeterWheels): a dial passing 9 -> 0 moves the next bigger wheel on by one, and back. The reading shown is always
+ * exactly the wheels. Litres since the last reading are worked out as they turn the dials. Nobody can skip it (owner 2026-11-26),
  * not even the owner; offline the last answer is kept and the phone stays locked until it can check.
  * Cash is OPTIONAL and separate (owner 2026-11-27): after closing time (or for a worked day never counted) a small bar
  * offers "Count cash" with the system's estimate (orders, M-Pesa, water metered); the meter screen never asks for cash.
@@ -227,7 +232,8 @@ private fun DailyCheckScreen(
             Text(if (cashOnly) "Count the cash" else "Meter check", color = AjiriwaColors.TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text(
                 if (cashOnly) "Optional: count the notes and coins in the drawer. The system already estimates it."
-                else "Read the water meter${if (meters.size > 1) "s" else ""} - it is asked every 24 hours.",
+                else "Read the water meter${if (meters.size > 1) "s" else ""} - it is asked every 24 hours. " +
+                    "The app opens as soon as the reading is saved.",
                 color = AjiriwaColors.TextSecondary, fontSize = 14.sp,
             )
             meters.forEach { m ->
@@ -316,14 +322,11 @@ private fun MeterCard(m: JSONObject, onReading: (String) -> Unit, notMoved: Bool
     }
     val last = m.optDouble("last_reading").takeIf { !it.isNaN() }
     val key = m.optString("item_id") + "|" + m.optString("last_reading")
-    val startScaled = remember(key) { BigDecimal.valueOf(last ?: 0.0).movePointRight(dialCount).toBigInteger().toString() }
-    val drumCount = maxOf(4, startScaled.length - dialCount)
-    val start = remember(key) { startScaled.padStart(drumCount + dialCount, '0').map { it - '0' } }
-    var digits by remember(key) { mutableStateOf(start) }
-    val reading = remember(digits) {
-        val s = digits.joinToString("")
-        BigDecimal(s.take(drumCount).ifBlank { "0" } + if (dialCount > 0) "." + s.drop(drumCount) else "")
-    }
+    val lastBd = remember(key) { BigDecimal.valueOf(last ?: 0.0) }
+    val drumCount = maxOf(4, lastBd.toBigInteger().toString().length)
+    // one number for all the wheels (MeterWheels): turning carries, tapping a number sets that wheel only
+    var digits by remember(key) { mutableStateOf(MeterWheels.digitsOf(lastBd, drumCount, dialCount)) }
+    val reading = remember(digits) { MeterWheels.value(digits, drumCount) }
     LaunchedEffect(reading) { onReading(reading.toPlainString()) }
     val factor = m.optDouble("factor", 1.0)
     val litres = last?.let { (reading - BigDecimal.valueOf(it)).toDouble() * factor }
@@ -348,20 +351,22 @@ private fun MeterCard(m: JSONObject, onReading: (String) -> Unit, notMoved: Bool
             Row(Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFCBD5E1)).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 (0 until drumCount).forEach { i ->
-                    Drum(digits[i], drumWidth) { by -> digits = digits.mapIndexed { j, d -> if (j == i) ((d + by) % 10 + 10) % 10 else d } }
+                    Drum(digits[i], drumWidth) { by -> digits = MeterWheels.step(digits, i, by) }
                 }
                 Text(" m³", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
             if (dialCount > 0) {
                 Text("2. Red needles: tap the number each needle points at", color = Color(0xFF334155), fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+                Text("Or turn a needle with your finger: past 9 the next dial moves on, like the real meter.",
+                    color = Color(0xFF64748B), fontSize = 11.sp)
                 val labels = listOf("x0.1  (100 L)", "x0.01  (10 L)", "x0.001  (1 L)", "x0.0001  (0.1 L)")
                 (0 until dialCount).chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         row.forEach { k ->
-                            Dial(digits[drumCount + k], if (cubic) labels[k] else "decimal ${k + 1}", dialSize) { v ->
-                                digits = digits.mapIndexed { j, d -> if (j == drumCount + k) v else d }
-                            }
+                            Dial(digits[drumCount + k], if (cubic) labels[k] else "decimal ${k + 1}", dialSize,
+                                onTurn = { by -> digits = MeterWheels.step(digits, drumCount + k, by) },
+                            ) { v -> digits = MeterWheels.set(digits, drumCount + k, v) }
                         }
                     }
                 }
@@ -391,11 +396,21 @@ private fun MeterCard(m: JSONObject, onReading: (String) -> Unit, notMoved: Bool
 
 @Composable
 private fun Drum(d: Int, width: androidx.compose.ui.unit.Dp = 36.dp, bump: (Int) -> Unit) {
+    // roll it with a finger: up = the next number, one number per ~2/3 of the drum's height (carries like ▲ / ▼)
+    val stepPx = with(LocalDensity.current) { (width * 8 / 9).toPx() }
+    val spin = remember(stepPx) { MeterWheels.Spin(stepPx) }
+    val bumpNow by rememberUpdatedState(bump)
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 2.dp)) {
         Text("▲", color = Color(0xFF475569), fontSize = 16.sp, modifier = Modifier.clickable { bump(1) }.padding(6.dp))
         Box(
             Modifier.width(width).height(width * 4 / 3).clip(RoundedCornerShape(4.dp))
                 .background(Brush.verticalGradient(listOf(Color.Black, Color(0xFF262626), Color.Black)))
+                .pointerInput(stepPx) {
+                    detectDragGestures(onDragStart = { spin.reset() }) { change, drag ->
+                        change.consume()
+                        spin.add(-drag.y).takeIf { it != 0 }?.let { bumpNow(it) }
+                    }
+                }
                 .clickable { bump(1) },
             contentAlignment = Alignment.Center,
         ) { Text("$d", color = Color.White, fontSize = (28 * width.value / 36).sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace) }
@@ -405,10 +420,26 @@ private fun Drum(d: Int, width: androidx.compose.ui.unit.Dp = 36.dp, bump: (Int)
 
 /** One small red-needle dial, 0 at the top, numbers clockwise like the real meter. */
 @Composable
-private fun Dial(value: Int, label: String, size: androidx.compose.ui.unit.Dp = 116.dp, onPick: (Int) -> Unit) {
+private fun Dial(value: Int, label: String, size: androidx.compose.ui.unit.Dp = 116.dp, onTurn: (Int) -> Unit = {},
+                 onPick: (Int) -> Unit) {
     val k = size.value / 116f   // everything inside scales with the dial
+    val spin = remember { MeterWheels.Spin(36f) }
+    val turnNow by rememberUpdatedState(onTurn)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(size).clip(CircleShape).background(Color.White).border(2.dp, Color(0xFF94A3B8), CircleShape)) {
+        Box(Modifier.size(size).clip(CircleShape).background(Color.White).border(2.dp, Color(0xFF94A3B8), CircleShape)
+            // turn the needle round with a finger: every 36 degrees is one number, clockwise up, and a full turn
+            // moves the next bigger wheel on by one (MeterWheels.step carries)
+            .pointerInput(Unit) {
+                var angle = 0f
+                fun at(p: Offset) = MeterWheels.clockAngle(p.x - this.size.width / 2f, p.y - this.size.height / 2f)
+                detectDragGestures(onDragStart = { p -> spin.reset(); angle = at(p) }) { change, _ ->
+                    change.consume()
+                    val now = at(change.position)
+                    val steps = spin.add(MeterWheels.angleDelta(angle, now))
+                    angle = now
+                    if (steps != 0) turnNow(steps)
+                }
+            }) {
             Canvas(Modifier.fillMaxSize()) {
                 val c = Offset(this.size.width / 2, this.size.height / 2)
                 val a = (value / 10.0) * 2 * PI - PI / 2
