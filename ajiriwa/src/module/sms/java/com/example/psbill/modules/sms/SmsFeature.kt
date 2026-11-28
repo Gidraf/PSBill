@@ -116,34 +116,38 @@ object SmsFeature : FeatureModule() {
     @Composable
     fun rememberSmsPermissionPrompt(): () -> Unit {
         val context = LocalContext.current
-        val permissionLauncher = rememberLauncherForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
-        ) { granted ->
-            if (granted[Manifest.permission.SEND_SMS] == true ||
-                ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
-            ) startEngine(context)
-        }
         val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+        // the default-SMS-app request comes after the explainer and Android's prompts, never before
+        val askRole: () -> Unit = remember(context) { { requestSmsRole(context, roleLauncher) } }
+        // explained first (PermissionExplainer.kt): what SMS / call log / contacts are for + a business-only phone
+        val ask = com.example.psbill.ui.rememberExplainedPermissions { granted ->
+            if (Manifest.permission.SEND_SMS in granted ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+            ) {
+                startEngine(context)
+                askRole()
+            }
+        }
         return remember(context) {
-            {
-                val missing = requiredPermissions.filter {
-                    ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-                }
-                if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+            { ask(requiredPermissions) }
+        }
+    }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val roleManager = context.getSystemService(RoleManager::class.java)
-                    if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_SMS) && !roleManager.isRoleHeld(RoleManager.ROLE_SMS)) {
-                        runCatching { roleLauncher.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_SMS)) }
-                    }
-                } else if (Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) {
-                    runCatching {
-                        context.startActivity(Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT).apply {
-                            putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, context.packageName)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        })
-                    }
-                }
+    private fun requestSmsRole(
+        context: Context,
+        roleLauncher: androidx.activity.result.ActivityResultLauncher<Intent>,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = context.getSystemService(RoleManager::class.java)
+            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_SMS) && !roleManager.isRoleHeld(RoleManager.ROLE_SMS)) {
+                runCatching { roleLauncher.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_SMS)) }
+            }
+        } else if (Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) {
+            runCatching {
+                context.startActivity(Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT).apply {
+                    putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, context.packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
             }
         }
     }

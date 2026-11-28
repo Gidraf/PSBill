@@ -145,7 +145,8 @@ private fun Panel(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 fun DeviceAgentEffects(ctx: ModuleContext) {
     val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+    // explained first (PermissionExplainer.kt): what location / notifications are for + use a business-only phone
+    val ask = rememberExplainedPermissions {
         DeviceAgent.start(context)
         DeviceAgent.start(context, DeliveryTrackingService.ACTION_SETTINGS_CHANGED)
     }
@@ -158,7 +159,7 @@ fun DeviceAgentEffects(ctx: ModuleContext) {
             if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
         }
         val perms = DeviceAgent.permissions(context)
-        if (!perms.optBoolean("location") || !perms.optBoolean("notifications")) launcher.launch(want.toTypedArray())
+        if (!perms.optBoolean("location") || !perms.optBoolean("notifications")) ask(want.toTypedArray())
     }
 }
 
